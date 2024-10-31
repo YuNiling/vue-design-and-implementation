@@ -4,7 +4,7 @@
 - [x] 响应式数据的基本实现
 - [x] 设计一个完善的响应系统
 - [x] 分支切换与 cleanup
-- [ ] 嵌套的 effect 与 effect 栈
+- [x] 嵌套的 effect 与 effect 栈
 - [ ] 避免无限递归循环
 - [ ] 调度执行
 - [ ] 计算属性 computed 与 lazy
