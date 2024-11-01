@@ -1,4 +1,5 @@
-// * 定义一个effect栈，解决effect5.js中的嵌套副作用问题
+// * 解决effect6.js中的无限递归调用从而导致的栈溢出问题
+// * 方案：如果 trigger 触发执行的副作用函数与当前正在执行的副作用函数相同，则不触发执行
 
 // 用一个全局变量存储被注册的副作用函数
 let activeEffect;
@@ -8,8 +9,7 @@ const effectStack = [];
 const bucket = new WeakMap();
 // 原始数据
 const data = {
-  foo: true,
-  bar: true
+  foo: 1
 };
 // 对原始数据的代理
 const obj = new Proxy(data, {
@@ -46,7 +46,12 @@ function trigger(target, key) {
   const depsMap = bucket.get(target);
   if (!depsMap) return;
   const effectsSet = depsMap.get(key);
-  const effectsToRun = new Set(effectsSet);
+  const effectsToRun = new Set();
+  effectsSet.forEach((effectFn => {
+    if (effectFn !== activeEffect) {
+      effectsToRun.add(effectFn);
+    }
+  }));
   effectsToRun.forEach(effectFn => effectFn())
 }
 
@@ -75,20 +80,7 @@ function cleanup(effectFn) {
 }
 
 // 执行副作用函数，触发读取
-effect(function effectFn1() {
-  console.log('effectFn1 执行');
-
-  effect(function effectFn2() {
-    console.log('effectFn2 执行');
-    temp2 = obj.bar;
-  });
-
-  temp1 = obj.foo;
+effect(function() {
+  console.log('effect run:', obj.foo);
+  obj.foo++;
 });
-
-// 1秒后修改响应式数据
-setTimeout(() => {
-  obj.foo = false;
-}, 1000);
-
-// !缺点：无法避免无限递归调用，从而导致栈溢出
