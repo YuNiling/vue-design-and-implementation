@@ -19,3 +19,22 @@
   - [ ] 8.5 迭代器方法
   - [ ] 8.6 values 和 keys 方法
 - [ ] 9. 总结
+
+<br>
+
+##### <center>表 Proxy 对象部署的所有内部方法</center>
+| 内部方法                | 处理器函数                | 签名                                            | 描述                       |
+|  :---                 | :---                     | :---                                           | :---                      |
+| [[GetPrototypeOf]]    | getPrototypeOf           | () -> Object/Null                              | 查明为该对象提供继承属性的对象 |
+| [[SetPrototypeOf]]    | setPrototypeOf           | (Object/Null) -> Boolean                       | 将该对象与提供继承属性的另一个对象相关联 |
+| [[IsExtensible]]      | isExtensible             | () -> Boolean                                  | 查明是否允许向该对象添加其他属性 |
+| [[PreventExtensions]] | preventExtensions        | () -> Boolean                                  | 控制能否向该对象添加新属性 |
+| [[GetOwnProperty]]    | getOwnPropertyDescriptor | (propertyKey) -> Undefined/Property Descriptor | 返回该对象自身属性的描述符，其键为 propertyKey，如果不存在这样的属性，则返回 undefined |
+| [[DefineOwnProperty]] | defineProperty           | (propertyKey, PropertyDescriptor) -> Boolean   | 创建或更改自己的属性，其键为 propertyKey，以其具有由 PropertyDescriptor 描述的状态 |
+| [[HasProperty]]       | has                      | (propertyKey) -> Boolean                       | 返回一个布尔值，指示该对象是否已经拥有键为 propertyKey 的自己的或者继承的属性 |
+| [[Get]]               | get                      | (propertyKey, receiver) -> any                 | 从该对象返回键为 propertyKey 的属性的值 |
+| [[Set]]               | set                      | (propertyKey, value, receiver) -> Boolean      | 将键值为 propertyKey 的属性的值设置为 value |
+| [[Delete]]            | deleteProperty           | (propertyKey) -> Boolean                       | 从该对象中删除属于自身的键为 propertyKey 的属性 |
+| [[OwnPropertyKeys]]   | ownKeys                  | () -> List of propertyKey                      | 返回一个 List，其元素都是对象自身的属性键 |
+| [[Call]]              | apply                    | (any, a List of any) -> any                    | 将允许的代码与 this 对象关联 |
+| [[Construct]]         | construct                | (a List of any, Object) -> object              | 创建一个对象，通过 new 运算符或 super 调用触发 |
