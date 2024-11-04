@@ -51,7 +51,7 @@ const obj = new Proxy(data, {
     return Reflect.has(target, key);
   },
   ownKeys(target) {
-    console.log('ownKeys 触发');
+    // console.log('ownKeys 触发');
     // 将副作用函数与 ITERATE_KEY 管理
     track(target, ITERATE_KEY);
     return Reflect.ownKeys(target);
@@ -271,23 +271,15 @@ function traverse(value, seen = new Set()) {
 }
 
 effect(() => {
-  console.log('foo' in obj);
-
-  // for...in 循环（修改）
-  obj.foo = 1;
-  // for (const key in obj) {
-  //   console.log(key);
-  // }
-
-  // for...in 循环（新增）
-  obj.bar = 4;
-  // for (const key in obj) {
-  //   console.log(key);
-  // }
-  
-  // for...in 循环（删除）
-  delete obj.foo;
-  // for (const key in obj) {
-  //   console.log(key);
-  // }
+  console.log('effect run');
+  for (const key in obj) {
+    console.log(key);
+  }
 });
+
+// 测试：修改属性值，不触发 ITERATE_KEY 关联的副作用函数
+// obj.foo = 2;
+// 测试：新增属性值，触发 ITERATE_KEY 关联的副作用函数
+obj.bar = 4;
+// 测试：删除属性值，触发 ITERATE_KEY 关联的副作用函数
+// delete obj.foo;
