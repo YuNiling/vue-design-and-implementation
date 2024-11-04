@@ -2,7 +2,7 @@
 
 - [x] 1. 理解 Proxy 和 Reflect
 - [x] 2. JavaScript 对象与 Proxy 的工作原理
-- [ ] 3. 如何代理 Object
+- [x] 3. 如何代理 Object
 - [ ] 4. 合理的触发响应
 - [ ] 5. 浅响应与深响应
 - [ ] 6. 只读和浅只读
