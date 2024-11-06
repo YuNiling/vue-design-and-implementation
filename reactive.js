@@ -1,4 +1,4 @@
-// * Map 和 Set 这两个数据类型的操作方法相似，最大的不同：Set 类型使用 add(value) 添加元素，而 Map 类型使用 set(key, value)、get(key)。
+// * reactive 公共方法封装
 
 // 用一个全局变量存储被注册的副作用函数
 let activeEffect;
@@ -593,4 +593,63 @@ function keysIterationMethod() {
       return this;
     }
   }
+}
+
+export function ref(val) {
+  // 在 ref 函数内部创建包裹对象
+  const wrapper = {
+    value: val
+  };
+  // 使用 Object.defineProperty 在 wrapper 对象上定义一个不可枚举的属性 __v_isRef，并且值为 true
+  Object.defineProperty(wrapper, '__v_isRef', {
+    value: true
+  });
+  // 将包裹对象变成响应式数据
+  return reactive(wrapper);
+}
+
+export function toRef(obj, key) {
+  const wrapper = {
+    get value() {
+      return obj[key];
+    },
+    set value(val) {
+      obj[key] = val;
+    }
+  };
+
+  Object.defineProperty(wrapper, '__v_isRef', {
+    value: true
+  });
+
+  return wrapper;
+}
+
+export function toRefs(obj) {
+  const ret = {};
+  for (const key in obj) {
+    ret[key] = toRef(obj, key);
+  }
+
+  return ret;
+}
+
+export function proxyRefs(target) {
+  return new Proxy(target, {
+    get(target, key, receiver) {
+      const value = Reflect.get(target, key, receiver);
+      // 自动脱 ref 实现，如果读取的值是 ref，则返回它的 value 属性值
+      return value.__v_isRef ? value.value : value;
+    },
+    set(target, key, newValue, receiver) {
+      // 通过 target 读取真实值
+      const value = target[key];
+      // 如果值是 Ref，则设置其对应的 value 属性值
+      if (value.__v_isRef){
+        value.value = newValue;
+        return true;
+      }
+      return Reflect.set(target, key, newValue, receiver);
+    }
+  });
 }
