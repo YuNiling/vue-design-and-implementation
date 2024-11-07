@@ -4,7 +4,7 @@
 - [x] HTML Attributes 与 DOM Properties
 - [x] 正确地设置元素属性
 - [x] class 的处理
-- [ ] 卸载操作
+- [x] 卸载操作
 - [ ] 区分 vnode 的类型
 - [ ] 事件的处理
 - [ ] 事件冒泡与更新时机问题
