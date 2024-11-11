@@ -1,4 +1,5 @@
 // * reactive 公共方法封装
+import { getType } from "./utils.js";
 
 // 用一个全局变量存储被注册的副作用函数
 let activeEffect;
@@ -542,17 +543,6 @@ function traverse(value, seen = new Set()) {
   }
 
   return value;
-}
-
-/**
- * 类型判断
- * @param {*} target 
- * @returns 
- */
-export function getType(target) {
-  const type = typeof target;
-  if (type !== 'object') return type;
-  return Object.prototype.toString.call(target).replace(/^\[object (\S+)\]$/, '$1');
 }
 
 // 抽离为独立的函数，方便复用
