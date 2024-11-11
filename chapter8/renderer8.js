@@ -264,6 +264,7 @@ const renderer = createRenderer({
     } else if (key === 'class') {
       el.className = nextValue || '';
     } else if (shouldSetAsProps(el, key, nextValue)) {
+      const type = typeof el[key];
       if (type === 'boolean' && nextValue === '') {
         el[key] = true;
       } else {
