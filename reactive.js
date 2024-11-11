@@ -234,7 +234,11 @@ export function createReative(obj, isShallow = false, isReadonly = false) {
   });
 }
 
-// 深响应
+/**
+ * 深响应
+ * @param {*} obj 
+ * @returns 
+ */
 export function reactive(obj) {
   // 有限通过原始对象 obj 寻找之前创建的代理对象，如果找到了，直接返回已有的代理对象
   const existionProxy = reactiveMap.get(obj);
@@ -248,22 +252,32 @@ export function reactive(obj) {
   return proxy;
 }
 
-// 浅响应
+/**
+ * 浅响应
+ * @param {*} obj 
+ * @returns 
+ */
 export function shallowReactive(obj) {
   return createReative(obj, true);
 }
 
-// 深只读
+/**
+ * 深只读
+ * @param {*} obj 
+ * @returns 
+ */
 export function readonly(obj) {
   return createReative(obj, false, true);
 }
 
-// 浅只读
+/**
+ * 浅只读
+ * @param {*} obj 
+ * @returns 
+ */
 export function shallowReadonly(obj) {
   return createReative(obj, true, true);
 }
-
-let temp1, temp2;
 
 export function track(target, key) {
   // 当禁止最终时，直接返回（“屏蔽” push 时读取 length 的操作）
@@ -393,25 +407,37 @@ function cleanup(effectFn) {
   effectFn.deps = [];
 }
 
-// 定义一个任务队列，采用 Set 数据结构目的是自动去重
-const jobQueue = new Set();
-// 使用 Promise.resolve() 创建一个 promise 实例，我们用它将一个任务添加到微任务队列
-const p = Promise.resolve();
+/**
+ * 调度器：当副作用函数需要重新执行时，不会立即执行，而是将它缓存到一个微任务队列，等执行栈清空后，再将它从微任务队列中取出并执行
+ */
+export function flushQueue() {
+  // 定义一个任务队列，采用 Set 数据结构目的是自动去重
+  const jobQueue = new Set();
+  // 使用 Promise.resolve() 创建一个 promise 实例，我们用它将一个任务添加到微任务队列
+  const p = Promise.resolve();
+  
+  // 一个标志代表是否正在刷新队列
+  let isFlushing = false;
+  function flushJob(job) {
+    // 将 job 添加到任务队列 jobQueue 中
+    jobQueue.add(job);
+    // 如果队列正在刷新，则什么都不做
+    if (isFlushing) return;
+    // 设置为 true ，代表正在刷新
+    isFlushing = true;
+    // 在微任务队列中刷新 jobQueue 队列
+    p.then(() => {
+      jobQueue.forEach(job => job());
+    }).finally(() => {
+      // 结束后重置 isFlushing
+      isFlushing = false;
+      jobQueue.length = 0;
+    });
+  }
 
-// 一个标志代表是否正在刷新队列
-let isFlushing = false;
-function flushJob() {
-  // 如果队列正在刷新，则什么都不做
-  if (isFlushing) return;
-  // 设置为 true ，代表正在刷新
-  isFlushing = true;
-  // 在微任务队列中刷新 jobQueue 队列
-  p.then(() => {
-    jobQueue.forEach(job => job());
-  }).finally(() => {
-    // 结束后重置 isFlushing
-    isFlushing = false;
-  });
+  return {
+    flushJob
+  }
 }
 
 // 执行副作用函数，触发读取
@@ -518,7 +544,11 @@ function traverse(value, seen = new Set()) {
   return value;
 }
 
-// 类型判断
+/**
+ * 类型判断
+ * @param {*} target 
+ * @returns 
+ */
 export function getType(target) {
   const type = typeof target;
   if (type !== 'object') return type;
