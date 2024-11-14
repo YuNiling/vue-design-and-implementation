@@ -57,6 +57,22 @@ function onUpdated(fn) {
   }
 }
 
+function onBeforeUnmount(fn) {
+  if (currentInstance) {
+    currentInstance.beforeUnmount.push(fn);
+  } else {
+    console.error('onBeforeUnmount 函数只能在 setup 中调用');
+  }
+}
+
+function onUnmounted(fn) {
+  if (currentInstance) {
+    currentInstance.unmounted.push(fn);
+  } else {
+    console.error('onUnmounted 函数只能在 setup 中调用');
+  }
+}
+
 // 创建渲染器
 function createRenderer(options) {
   
@@ -643,7 +659,9 @@ function createRenderer(options) {
       beforeMount: [],
       mounted: [],
       beforeUpdate: [],
-      updated: []
+      updated: [],
+      beforeUnmount: [],
+      unmounted: []
     };
 
     /**
@@ -757,6 +775,8 @@ function createRenderer(options) {
       }
       // 更新组件实例的子树
       instance.subTree = subTree;
+      instance.instance = instance;
+      instance.renderContext = renderContext;
     }, {
       // 指定该副作用函数的调度器为 flushQueueMethod.flushJob 即可
       scheduler: flushQueueMethod.flushJob
@@ -822,6 +842,13 @@ function createRenderer(options) {
     // 在卸载时，如果卸载的 vnode 类型为 Fragment，则需要卸载其 children
     if (vnode.type === Fragment) {
       vnode.children.forEach(c => unmount(c));
+      return;
+    } else if (typeof vnode.type === 'object') {
+      // 对于组件卸载，本质上时要卸载组件所渲染的内容，即 subTree
+      const instance = vnode.component.instance;
+      instance.beforeUnmount.forEach(hook => hook.call(instance.renderContext));
+      unmount(vnode.component.subTree);
+      instance.unmounted.forEach(hook => hook.call(instance.renderContext));
       return;
     }
     
@@ -935,17 +962,70 @@ const renderer = createRenderer({
 // renderer.render(vnode, document.querySelector('#app'));
 
 // 测试2：onBeforeUpdate、onUpdated
+// const MyComponent = {
+//   name: 'MyComponent',
+//   setup() {
+//     const count = ref(0);
+
+//     onUpdated(() => {
+//       console.log('onUpdated', document.getElementById('count').textContent);
+//     });
+
+//     onBeforeUpdate(() => {
+//       console.log('onBeforeUpdate', document.getElementById('count').textContent);
+//     });
+
+//     onBeforeUnmount(() => {
+//       console.log('onBeforeUnmount');
+//     });
+
+//     onUnmounted(() => {
+//       console.log('onUnmounted');
+//     });
+
+//     return {
+//       count
+//     };
+//   },
+//   render() {
+//     const that = this;
+//     return {
+//       type: 'button', 
+//       props: {
+//         id: 'count',
+//         onClick: () => {
+//           that.count++;
+//         }
+//       },
+//       children: `${this.count}` 
+//     }
+//   }
+// };
+// const vnode = {
+//   type: MyComponent
+// };
+// renderer.render(vnode, document.querySelector('#app'));
+
+// 测试3：onBeforeUnmount、onUnmounted
 const MyComponent = {
   name: 'MyComponent',
   setup() {
     const count = ref(0);
+    let timer = null;
 
-    onUpdated(() => {
-      console.log('onUpdated', document.getElementById('count').textContent);
+    onMounted(() => {
+      timer = setInterval(() => {
+        count.value++;
+      }, 100);
     });
 
-    onBeforeUpdate(() => {
-      console.log('onBeforeUpdate', document.getElementById('count').textContent);
+    onBeforeUnmount(() => {
+      console.log('onBeforeUnmount', count.value);
+      clearInterval(timer);
+    });
+
+    onUnmounted(() => {
+      console.log('onUnmounted', count.value);
     });
 
     return {
@@ -953,16 +1033,9 @@ const MyComponent = {
     };
   },
   render() {
-    const that = this;
-    return { 
+    return {
       type: 'button', 
-      props: {
-        id: 'count',
-        onClick: () => {
-          that.count++;
-        }
-      },
-      children: `${this.count}` 
+      children: '测试' 
     }
   }
 };
@@ -970,3 +1043,6 @@ const vnode = {
   type: MyComponent
 };
 renderer.render(vnode, document.querySelector('#app'));
+setTimeout(() => {
+  renderer.render(null, document.querySelector('#app'));
+}, 3000);
