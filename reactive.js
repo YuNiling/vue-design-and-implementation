@@ -628,6 +628,19 @@ export function ref(val) {
   return reactive(wrapper);
 }
 
+export function shallowRef(val) {
+    // 在 ref 函数内部创建包裹对象
+    const wrapper = {
+      value: val
+    };
+    // 使用 Object.defineProperty 在 wrapper 对象上定义一个不可枚举的属性 __v_isRef，并且值为 true
+    Object.defineProperty(wrapper, '__v_isRef', {
+      value: true
+    });
+    // 将包裹对象变成响应式数据
+    return shallowReactive(wrapper);
+}
+
 export function toRef(obj, key) {
   const wrapper = {
     get value() {
