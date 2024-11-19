@@ -50,6 +50,36 @@
       text-align: center;
       padding: 10px;
     }
+
+    .box {
+      width: 100px;
+      height: 100px;
+      background-color: red;
+    }
+
+    .enter-from  {
+      transform: translateX(100px);
+    }
+
+    .enter-active {
+      transition: transform 1s ease-in-out;
+    }
+
+    .enter-to {
+      transform: translateX(0px);
+    }
+
+    .leave-from  {
+      transform: translateX(0px);
+    }
+
+    .leave-active {
+      transition: transform 2s ease-in-out;
+    }
+
+    .leave-to {
+      transform: translateX(100px);
+    }
   </style>
 </head>
 
@@ -65,7 +95,8 @@
   </div>
 
   <!-- <script type="module" src="keepAliveComponent1.js"></script> -->
-  <script type="module" src="TeleportComponent2.js"></script>
+  <!-- <script type="module" src="TeleportComponent2.js"></script> -->
+  <script type="module" src="TransitionComponent3.js"></script>
 </body>
 
 </html>
