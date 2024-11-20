@@ -262,7 +262,7 @@ function createCallExpression(callee, args) {
 /**
  * 打印当前 AST 中节点的信息
  * @param {Object} node 当前节点
- * @param {Number} indent 层级（节点层级 * 2）
+ * @param {Number} indent 缩进层级（节点层级 * 2）
  */
 function dump(node, indent = 0) {
   // 节点的类型
@@ -400,11 +400,13 @@ function transformRoot(node, context) {
       },
       params: [], // 参数，目前渲染函数还不需要参数，所以这里是一个空数组
       // 需然函数的函数体只有一个语句，即 return 语句
-      body: {
-        type: 'ReturnStatement',
-        // 最外层的 h 函数调用
-        return: vnodeJSAST
-      }
+      body: [
+        {
+          type: 'ReturnStatement',
+          // 最外层的 h 函数调用
+          return: vnodeJSAST
+        }
+      ]
     };
   };
 }

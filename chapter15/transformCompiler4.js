@@ -212,7 +212,7 @@ function parse(template) {
 /**
  * 打印当前 AST 中节点的信息
  * @param {Object} node 当前节点
- * @param {Number} indent 层级（节点层级 * 2）
+ * @param {Number} indent 缩进层级（节点层级 * 2）
  */
 function dump(node, indent = 0) {
   // 节点的类型
