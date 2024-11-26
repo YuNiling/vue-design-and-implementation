@@ -12,6 +12,9 @@ export const Comment = Symbol();
 //-- Fragment 节点的 type 标识
 export const Fragment = Symbol();
 
+//-- Static 节点的 type 标识
+export const Static = Symbol();
+
 //-- KeepAlive 节点 type 标识
 // 创建一个缓存对象
 // key: vnode.type
