@@ -1,7 +1,7 @@
 export function foo(obj) {
-  obj && obj.foo;
+  return obj && obj.foo;
 }
 
 export function bar(obj) {
-  obj && obj.bar;
+  return obj && obj.bar;
 }
