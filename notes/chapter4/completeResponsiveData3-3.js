@@ -1,12 +1,5 @@
-// *将effect3.js代码进行抽离封装
-// *树型数据结构 target -> key -> effects
-// *   WeakMap          Map          Set
-// *｜ 键    值 ｜  ｜ 键    值 ｜   ｜  值  ｜
-// * target Map             
-// *         |             
-// *          ->     key  Set       
-// *                       | 
-// *                        ->      effects
+// ** 设计一个完善的响应系统
+// 优点：封装 track 和 trigger 函数 
 
 // 用一个全局变量存储被注册的副作用函数
 let activeEffect;

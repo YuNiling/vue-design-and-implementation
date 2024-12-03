@@ -1,4 +1,4 @@
-// * 定义一个effect栈，解决effect5.js中的嵌套副作用问题
+// ** 嵌套的 effect 与 effect 栈
 
 // 用一个全局变量存储被注册的副作用函数
 let activeEffect;
@@ -90,5 +90,3 @@ effect(function effectFn1() {
 setTimeout(() => {
   obj.foo = false;
 }, 1000);
-
-// !缺点：无法避免无限递归调用，从而导致栈溢出

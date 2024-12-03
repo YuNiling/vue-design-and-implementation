@@ -1,5 +1,5 @@
-// * 解决effect6.js中的无限递归调用从而导致的栈溢出问题
-// * 方案：如果 trigger 触发执行的副作用函数与当前正在执行的副作用函数相同，则不触发执行
+// ** 避免无限递归循环
+// * 优点：解决无限递归调用从而导致的栈溢出问题
 
 // 用一个全局变量存储被注册的副作用函数
 let activeEffect;
@@ -81,6 +81,6 @@ function cleanup(effectFn) {
 
 // 执行副作用函数，触发读取
 effect(function() {
-  console.log('effect run:', obj.foo);
   obj.foo++;
+  console.log('effect run:', obj.foo);
 });

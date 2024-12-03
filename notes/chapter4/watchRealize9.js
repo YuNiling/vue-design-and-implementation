@@ -1,4 +1,4 @@
-// * watch 两个特性：立即执行的回到函数、回调函数的执行时机。
+// ** watch 的实现原理
 
 // 用一个全局变量存储被注册的副作用函数
 let activeEffect;
@@ -150,7 +150,7 @@ function computed(getter) {
 }
 
 // watch 函数接收两个参数，source 是响应式数据/getter函数，cb 是回调函数
-function watch(source, cb, options = {}) {
+function watch(source, cb) {
   // 定义 getter
   let getter;
   // 如果 source 是函数，说明用户传递的是 getter，所以直接把 source 赋值给 getter
@@ -162,37 +162,21 @@ function watch(source, cb, options = {}) {
   }
 
   let oldVal, newVal;
-
-  // 提取 scheduler 调度函数为一个独立的 job 函数
-  const job = () => {
-    // 当数据变化时，调用回调函数 cb
-    newVal = effectFn();
-    cb(newVal, oldVal);
-    // 更新旧值，不然下一次会得到错误的旧值
-    oldVal = newVal;
-  };
-
   const effectFn = effect(
     () => getter(),
     {
       lazy: true,
-      scheduler: () => {
-        // 值调度函数中判断 flush 是否为 'post'，如果是，将其放到微任务队列中执行
-        if (options.flush === 'post') {
-          const p = Promise.resolve();
-          p.then(job);
-        } else {
-          job();
-        }
+      scheduler() {
+        // 当数据变化时，调用回调函数 cb
+        newVal = effectFn();
+        cb(newVal, oldVal);
+        // 更新旧值，不然下一次会得到错误的旧值
+        oldVal = newVal;
       }
     }
   );
 
-  if (options.immediate) {
-    job();
-  } else {
-    oldVal = effectFn();
-  }
+  oldVal = effectFn();
 }
 
 function traverse(value, seen = new Set()) {
@@ -209,16 +193,22 @@ function traverse(value, seen = new Set()) {
   return value;
 }
 
+// watch(obj, () => {
+//   console.log('数据变了');
+// });
+
+// watch(
+//   // getter 函数
+//   () => obj.foo, 
+//   () => {
+//     console.log('obj.foo 的值变了');
+//   }
+// );
+
 watch(
   () => obj.foo, 
   (newVal, oldVal) => {
     console.log(newVal, oldVal);
-  },
-  {
-    // 回调函数会在 watch 创建时立即执行一次
-    // immediate: true
-    // 调度函数需要将副作用函数放到一个微任务队列中，并等待 DOM 更新结束后再执行
-    flush: 'post' // 还可以指定为 "pre" | "sync"
   }
 );
 

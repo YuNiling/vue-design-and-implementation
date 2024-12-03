@@ -1,12 +1,6 @@
-// *改进的响应式
-// *树型数据结构 target -> key -> effects
-// *   WeakMap          Map          Set
-// *｜ 键    值 ｜  ｜ 键    值 ｜   ｜  值  ｜
-// * target Map             
-// *         |             
-// *          ->     key  Set       
-// *                       | 
-// *                        ->      effects
+// ** 设计一个完善的响应系统
+// 优点1：改进 effect 硬编码的问题 
+// 优点2：没有建立 key 与副作用的联系
 
 // 用一个全局变量存储被注册的副作用函数
 let activeEffect;
