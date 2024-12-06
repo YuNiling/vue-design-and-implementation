@@ -1,4 +1,4 @@
-// * 浅响应：只有对象的第一层属性上响应的。
+// ** 只读和浅只读
 
 // 用一个全局变量存储被注册的副作用函数
 let activeEffect;
@@ -13,8 +13,14 @@ const TriggerType = {
   DELETE: 'DELETE'
 };
 
-// 封装 createReative 函数，接收一个参数 isShallow，代表是否为浅响应，默认为 false，即深响应
-function createReative(obj, isShallow = false) {
+/**
+ * 封装响应式数据
+ * @param {*} obj 原始数据
+ * @param {Boolean} isShallow 代表是否为浅响应，默认为 false，即深响应；为 true 时，即浅响应
+ * @param {Boolean} isReadonly 代表是否只读，默认为 false，即非只读；为 true 时，即只读
+ * @returns 
+ */
+function createReative(obj, isShallow = false, isReadonly = false) {
   return new Proxy(obj, {
     get(target, key, receiver) {
       // 代理对象可以通过 raw 属性访问原始数据
@@ -22,20 +28,32 @@ function createReative(obj, isShallow = false) {
         return target;
       }
 
-      track(target, key);
+      // 非只读的时候才需要建立响应联系
+      if(!isReadonly) {
+        track(target, key);
+      }
       
       const res = Reflect.get(target, key, receiver);
+
       // 如果是浅响应，则直接返回原始值
       if (isShallow){
         return res;
       }
 
       if (typeof res === 'object' && res !== null) {
-        return reactive(res);
+        // 如果数据为只读，则调用 readonly 对峙进行包装
+        return isReadonly ? readonly(res) : reactive(res);
       }
+
       return res;
     },
     set(target, key, newVal, receiver) {
+      // 如果是只读的，则打印警告信息并返回
+      if (isReadonly) {
+        console.warn(`属性 ${key} 是只读的`);
+        return true;
+      }
+
       // 先获取旧值
       const oldVal = target[key];
 
@@ -53,6 +71,12 @@ function createReative(obj, isShallow = false) {
       return res;
     },
     deleteProperty(target, key) {
+      // 如果是只读的，则打印警告信息并返回
+      if (isReadonly) {
+        console.warn(`属性 ${key} 是只读的`);
+        return true;
+      }
+
       // 检查被操作的属性是否是对象自己的属性
       const hadKey = Object.prototype.hasOwnProperty.call(target, key);
       // 使用 Reflect.deleteProperty 完成属性的删除
@@ -85,6 +109,16 @@ function reactive(obj) {
 // 浅响应
 function shallowReactive(obj) {
   return createReative(obj, true);
+}
+
+// 深只读
+function readonly(obj) {
+  return createReative(obj, false, true);
+}
+
+// 浅只读
+function shallowReadonly(obj) {
+  return createReative(obj, true, true);
 }
 
 let temp1, temp2;
@@ -299,27 +333,27 @@ function traverse(value, seen = new Set()) {
   return value;
 }
 
-// 测试：修改 obj.foo.bar 的值，能否触发响应
-// const obj = reactive({
-//   foo: {
-//     bar: 1
-//   }
-// });
-// effect(() => {
-//   console.log(obj.foo.bar);
-// });
-// obj.foo.bar = 2;
+console.log('测试1：尝试修改只读数据，会得到警告');
+const obj1 = readonly({ foo: 1 });
+effect(() => {
+  console.log('effect run: ', obj1.foo); // 可以读取值，但是不需要值副作用函数与数据之间建立响应联系
+});
+obj1.foo = 2;
 
-// 测试：浅响应
-const obj2 = shallowReactive({
-  foo: {
-    bar: 1
-  }
+console.log('测试2：深只读，修改数据，会得到警告');
+const obj2 = readonly({
+  foo: { bar2: 3 }
 });
 effect(() => {
-  console.log(obj2.foo.bar);
+  console.log('effect run: ', obj2.foo.bar2);
 });
-// obj2.foo 是响应的，可以触发副作用函数重新执行
-obj2.foo = { bar: 2};
-// obj2.foo.bar 不是响应的，不能触发副作用函数重新执行
-obj2.foo.bar = 3;
+obj2.foo.bar2 = 4;
+
+console.log('测试3：浅只读，修改数据，不会得到告警，但不会触发响应');
+const obj3 = shallowReadonly({
+  foo: { bar3: 5 }
+});
+effect(() => {
+  console.log('effect run: ', obj3.foo.bar3);
+});
+obj3.foo.bar3 = 6;

@@ -1,8 +1,4 @@
-// * Map 和 Set 这两个数据类型的操作方法相似，最大的不同：Set 类型使用 add(value) 添加元素，而 Map 类型使用 set(key, value)、get(key)。
-// * 数据污染：把响应式数据设置到原始数据上的行为。
-// * 可迭代协议：一个对象实现了 Symbol.iterator 方法。
-// * 迭代器协议：一个对象实现了 next 方法。
-// * 一个对象可以同时实现 可迭代协议 和 迭代器协议。例如 entries 方法。
+// ** 代理 Set 和 Map
 
 // 用一个全局变量存储被注册的副作用函数
 let activeEffect;
@@ -10,7 +6,7 @@ let activeEffect;
 const effectStack = [];
 // 存储副作用函数的桶
 const bucket = new WeakMap();
-const ITERATE_KEY = Symbol(); 
+const ITERATE_KEY = Symbol(); // 新增、删除操作时触发的 key
 const MAP_KEY_ITERATE_KEY = Symbol();
 const TriggerType = {
   SET: 'SET',
@@ -19,6 +15,7 @@ const TriggerType = {
 };
 // 定义一个 Map 实例，存储原始对象到代理对象的映射
 const reactiveMap = new Map();
+const wrap = (val) => typeof val === 'object' && val !== null ? reactive(val) : val;
 
 // 存储改进的 Array 方法对象
 const arrayInstrumentations = {};
@@ -60,16 +57,13 @@ const mutableInstrumentations = {
     // 先判断是否已存在
     const hadKey = target.has(key);
     // 只有在值不存在的情况下，才需要触发响应
+    // 通过原始数据对象执行 add 方法删除具体的值，注意，这里不需要 .bind 了，因为是直接通过 target 调用并执行的
+    const res = target.add(key);
     if (!hadKey){
-      // 通过原始数据对象执行 add 方法删除具体的值，注意，这里不需要 .bind 了，因为是直接通过 target 调用并执行的
-      const res = target.add(key);
-
       // 调用 trigger 函数触发响应，并制定操作类型为 ADD
       trigger(target, key, TriggerType.ADD);
-      return res;
     }
-
-    return target;
+    return res;
   },
   delete(key) {
     const target = this.raw;
@@ -79,7 +73,6 @@ const mutableInstrumentations = {
     if (hadKey){
       trigger(target, key, TriggerType.DELETE);
     }
-
     return res;
   },
   get(key) {
@@ -89,7 +82,10 @@ const mutableInstrumentations = {
     if (hadKey) {
       // 如果得到的结果 res 仍然是可代理的数据，则返回使用 reactive 包装后的响应式数据
       const res = target.get(key);
-      return typeof res === 'object' ? reactive(res) : res;
+      if (mutableInstrumentations.isShallow) {
+        return res;
+      }
+      return (typeof res === 'object' && res !== null) ? reactive(res) : res;
     }
   },
   set(key, value) {
@@ -110,8 +106,6 @@ const mutableInstrumentations = {
     }
   },
   forEach(callback, thisArg) {
-    // wrap 函数用来把可代理的值转换为响应式数据
-    const wrap = (val) => typeof val === 'object' ? reactive(val) : val;
     const target = this.raw;
     // 遍历操作与键值对的数量有关，因此任何会修改 Map 对象键值对数量的操作都应该触发副作用函数，例如 add 和 delete 方法，所以这时该让副作用函数与 ITERATE_KEY 建立响应联系
     track(target, ITERATE_KEY);
@@ -153,6 +147,7 @@ function createReative(obj, isShallow = false, isReadonly = false) {
         }
 
         // 返回定义在 mutableInstrumentations 对象下的方法
+        mutableInstrumentations.isShallow = isShallow;
         return mutableInstrumentations[key];
       }
 
@@ -306,8 +301,6 @@ function trigger(target, key, type, newVal) {
   ) {
     // 取得与 ITERATE_KEY 相关联的副作用函数
     const iterateEffects = depsMap.get(ITERATE_KEY);
-
-    // 将与 ITERATE_KEY 相关联的副作用函数也添加到 effectsToRun
     iterateEffects && iterateEffects.forEach(effectFn => {
       if (effectFn !== activeEffect) {
         effectsToRun.add(effectFn);
@@ -320,19 +313,16 @@ function trigger(target, key, type, newVal) {
     getType(target) === 'Map'
   ) {
     const iterateMapEffects = depsMap.get(MAP_KEY_ITERATE_KEY);
-
     iterateMapEffects && iterateMapEffects.forEach(effectFn => {
       if (effectFn !== activeEffect) {
         effectsToRun.add(effectFn);
       }
     });
   }
-  // * 当操作类型为'ADD'且数据类型为数组时，取出并执行与length属性关联的副作用函数
+  // 当操作类型为'ADD'且数据类型为数组时，取出并执行与length属性关联的副作用函数
   if (Array.isArray(target) && type === TriggerType.ADD) {
     // 取出与 length 相关联的副作用函数
     const lengthEffects = depsMap.get('length');
-
-    // 将这些副作用函数添加到 effectsToRun 中，待执行
     lengthEffects && lengthEffects.forEach(effectFn => {
       if (effectFn !== activeEffect) {
         effectsToRun.add(effectFn);
@@ -533,7 +523,6 @@ function getType(target) {
 function iterationMethod() {
   const target = this.raw;
   const itr = target[Symbol.iterator]();
-  const wrap = (val) => typeof val === 'object' && val !== null ? reactive(val) : val;
 
   // 迭代操作与集合中元素的数量有关，只要结合的 size 发生变化，就该触发迭代操作重新执行
   track(target, ITERATE_KEY);
@@ -560,7 +549,6 @@ function valuesIterationMethod() {
   const target = this.raw;
   // 通过 target.values 获取原始迭代器方法
   const itr = target.values();
-  const wrap = (val) => typeof val === 'object' ? reactive(val) : val;
   track(target, ITERATE_KEY);
 
   return {
@@ -581,13 +569,13 @@ function keysIterationMethod() {
   const target = this.raw;
   // 通过 target.keys 获取原始迭代器方法
   const itr = target.keys();
-  const wrap = (val) => typeof val === 'object' ? reactive(val) : val;
 
   track(target, MAP_KEY_ITERATE_KEY);
 
   return {
     next() {
       const { value, done } = itr.next();
+
       return {
         value: wrap(value),
         done
@@ -599,155 +587,95 @@ function keysIterationMethod() {
   }
 }
 
-// 测试1：size 是 Set 对象的属性，不能在非 Set 对象（代理对象obj）上使用 Set.prototype.size 属性。
-// const s = new Set([1, 2, 3]);
-// const obj = new Proxy(s, {});
-// console.log(obj.size); // 报错：Method get Set.prototype.size called on incompatible receiver。
+console.log('测试1：size、delete 方法测试，原始数据 Set[1, 2, 3]');
+const obj1 = createReative(new Set([1, 2, 3]));
+console.log('size: ', obj1.size); 
+console.log('delete 2: ', obj1.delete(2)); 
+console.log('obj1: ', obj1); 
 
-// 测试2：解决“测试1” bug。增加 get 拦截函数，访问器属性 size 的 getter 函数执行时，其 this 指向就是是原始 Set对象(s) 而非 代理对象(obj)。
-// const s = new Set([1, 2, 3]);
-// const obj = new Proxy(s, {
-//   get(target, key, receiver) {
-//     if (key === 'size') {
-//       // 如果读取的是 size 属性，通过指定第三个参数 receiver 的原始对象 target 从而修复问题
-//       return Reflect.get(target, key, target);
-//     }
-//     // 读取其他属性的默认行为
-//     return Reflect.get(target, key, receiver);
-//   }
-// });
-// console.log(obj.size); // 成功访问
+console.log('测试2：访问 size 属性时调用 track 函数进行依赖追踪，然后在 add/delete 方法执行时调用 trigger 函数触发响应。');
+const obj2 = reactive(new Set([1, 2, 3]));
+effect(() => {
+  console.log('effect2 size: ', obj2.size);
+});
+console.log('add 5: ', obj2.add(5));
+console.log('delete 2: ', obj2.delete(2));
 
-// 测试3：delete 是 Set 的一个方法，代理对象obj 没有这个方法
-// const s = new Set([1, 2, 3]);
-// const obj = new Proxy(s, {
-//   get(target, key, receiver) {
-//     if (key === 'size') {
-//       // 如果读取的是 size 属性，通过指定第三个参数 receiver 的原始对象 target 从而修复问题
-//       return Reflect.get(target, key, target);
-//     }
-//     // 读取其他属性的默认行为
-//     return Reflect.get(target, key, receiver);
-//   }
-// });
-// console.log(obj.delete(1)); // 报错：Method Set.prototype.delete called on incompatible receiver
+console.log('测试3：Map 类型数据的 set、get 方法实现');
+const obj3 = reactive(new Map([['key', 1]]));
+effect(() => {
+  console.log('effect3 get key: ', obj3.get('key'));
+});
+obj3.set('key', 2);
 
-// 测试4: 解决“测试3” bug。需要把 delete 方法与原始对象绑定。
-// const s = new Set([1, 2, 3]);
-// const obj = new Proxy(s, {
-//   get(target, key, receiver) {
-//     if (key === 'size') {
-//       // 如果读取的是 size 属性，通过指定第三个参数 receiver 的原始对象 target 从而修复问题
-//       return Reflect.get(target, key, target);
-//     }
-//     // 将方法与原始数据对象 target 绑定后返回
-//     return target[key].bind(target);
-//   }
-// });
-// console.log(obj.delete(1)); // 成功调用
+console.log('测试4：Map 数据类型 set 方法，修改原始数据，对响应式数据不应该造成影响，副作用函数不应该执行。');
+const m = new Map();
+const p1 = reactive(m);
+const p2 = reactive(new Map());
+p1.set('p2', p2);
+effect(() => {
+  console.log(m.get('p2').size); // 注意，这里是通过原始数据 m 访问 p2
+});
+m.get('p2').set('foo', 1) // 注意，这里是通过原始数据 m 为 p2 设置一个键值对 foo --> 1
+console.log('m: ', m);
+console.log('p1: ', p1);
+console.log('p2: ', p2);
 
-// 测试5：根据前面的测试封装 createReactive 方法。
-// const obj = reactive(new Set([1, 2, 3]));
-// console.log(obj.size);
-// console.log(obj.delete(2));
-// console.log(obj);
+console.log('测试5：forEach 回调函数返回的应该是响应式数据，修改数据，会触发响应');
+const key5 = { key: 1 };
+const value5 = new Set([1, 2, 3]);
+const obj5 = reactive(new Map([
+  [key5, value5],
+  ['key2', 2]
+]));
+effect(() => {
+  console.log('effect5 forEach');
+  obj5.forEach(function(value, key){
+    console.log(key, value, value.size);
+  });
+});
+console.log('****操作：key5 delete 1');
+obj5.get(key5).delete(1);
+console.log('****操作：set key2 3');
+obj5.set('key2', 3);
 
-// 测试6：访问 size 属性时调用 track 函数进行依赖追踪，然后在 add 方法执行时调用 trigger 函数触发响应。
-// const obj = reactive(new Set([1, 2, 3]));
-// effect(() => {
-//   console.log(obj.size);
-// });
-// console.log(obj.add(5)); // add 方法间接修改 size 属性值，触发响应
-// console.log(obj.delete(2)); // 触发响应
-
-// 测试7：Map 类型数据的 set、get 方法实现
-// const obj = reactive(new Map([['key', 1]]));
-// effect(() => {
-//   console.log(obj.get('key'));
-// });
-// obj.set('key', 2); // 触发响应
-
-// 测试8：Map 数据类型 set 方法，修改原始数据，对响应式数据不应该造成影响，副作用函数不应该执行。
-// const m = new Map();
-// const p1 = reactive(m);
-// const p2 = reactive(new Map());
-// p1.set('p2', p2);
-// effect(() => {
-//   console.log(m.get('p2').size); // 注意，这里是通过原始数据 m 访问 p2
-// });
-// m.get('p2').set('foo', 1) // 注意，这里是通过原始数据 m 为 p2 设置一个键值对 foo --> 1
-
-// 测试9：任何会修改 Map 数据类型键值对数量的操作，都会触发 forEach 副作用函数。
-// const obj = reactive(new Map([
-//   [{ key: 1 }, { value: 1 }]
-// ]));
-// effect(() => {
-//   obj.forEach(function(value, key){
-//     console.log(key, value);
-//   });
-// });
-// obj.set({ key: 2 }, { value: 2 }); // 触发响应
-
-// 测试10：forEach 回调函数返回的应该是响应式数据，修改数据，会触发响应
-// const key = { key: 1 };
-// const value = new Set([1, 2, 3]);
-// const obj = reactive(new Map([
-//   [key, value]
-// ]));
-// effect(() => {
-//   obj.forEach(function(value, key){
-//     console.log(value.size);
-//   });
-// });
-// obj.get(key).delete(1);
-
-// 测试11：for...in 与 forEach 的响应联系都是建立在 ITERATE_KEY 与副作用函数之间的，但是有本质区别：
-// for...in 只关心集合的键，只有当新增、删除集合的 key 时（ADD、DELETE），才会执行副作用函数；
-// 而 forEach 还关心集合的值，因此 SET 操作修改集合的值时也会触发副作用函数。
-// const obj = reactive(new Map([
-//   ['key', 1]
-// ]));
-// effect(() => {
-//   obj.forEach(function(value, key){
-//     // forEach 循环不仅关心集合的键，还关心集合的值
-//     console.log(value);
-//   });
-// });
-// obj.set('key', 2); // 即使操作类型是 SET，也应该触发响应
-
-// 测试12：for...of 遍历代理对象，需要这个是可迭代的，对象是否能实现迭代，取决于对象是否实现了 Symbol.iterator 方法。
-// const obj = reactive(new Map([
-//   ['key1', 'value1'],
-//   ['key2', 'value2']
-// ]));
-// effect(() => {
-//   for (const [key, value] of obj.entries()) {
-//     console.log(key, value);
-//   }
-// });
-// obj.set('key3', 'value3'); // 触发响应
-
-// 测试13：values 方法实现
-// const obj = reactive(new Map([
-//   ['key1', 'value1'],
-//   ['key2', 'value2']
-// ]));
-// effect(() => {
-//   for (const value of obj.values()) {
-//     console.log(value);
-//   }
-// });
-// obj.set('key2', 'value3'); // 修改 value，触发响应
-
-// 测试14：keys 方法实现
-const obj = reactive(new Map([
+console.log('测试6：entries 方法实现')
+const obj6 = reactive(new Map([
   ['key1', 'value1'],
   ['key2', 'value2']
 ]));
 effect(() => {
-  for (const value of obj.keys()) {
+  for (const [key, value] of obj6.entries()) {
+    console.log(key, value);
+  }
+});
+console.log('****操作： set key3 value3');
+obj6.set('key3', 'value3');
+
+console.log('测试7：values 方法实现');
+const obj7 = reactive(new Map([
+  ['key1', 'value1'],
+  ['key2', 'value2']
+]));
+effect(() => {
+  for (const value of obj7.values()) {
     console.log(value);
   }
 });
-// obj.set('key2', 'value3'); // 修改 value，没有修改 key，不触发响应
-obj.set('key3', 'value3'); // 触发响应
+console.log('****操作： set key2 value3');
+obj7.set('key2', 'value3'); // 修改 value，触发响应
+
+console.log('测试8：keys 方法实现');
+const obj8 = reactive(new Map([
+  ['key1', 'value1'],
+  ['key2', 'value2']
+]));
+effect(() => {
+  for (const value of obj8.keys()) {
+    console.log(value);
+  }
+});
+console.log('****操作： set key2 value3');
+obj8.set('key2', 'value3'); // 修改 value，没有修改 key，不触发响应
+console.log('****操作： set key4 value4');
+obj8.set('key4', 'value4'); // 触发响应

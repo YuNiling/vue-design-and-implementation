@@ -1,8 +1,4 @@
-// * 普通对象所有可能的“读取”操作：
-// * 1.访问属性：obj.foo（拦截函数为 get ）
-// * 2.判断对象或原型上是否存在给定的 key: key in obj （拦截函数为 has ）
-// * 3.使用 for...in 循环遍历对象: for (const key in obj) {}。 （拦截函数为 ownKeys ）
-// * 注：for...in 语句循环一个对象所有可枚举的属性，包括自身的和继承的。
+// ** 如何合理触发响应
 
 // 用一个全局变量存储被注册的副作用函数
 let activeEffect;
@@ -10,53 +6,66 @@ let activeEffect;
 const effectStack = [];
 // 存储副作用函数的桶
 const bucket = new WeakMap();
-// 原始数据
-const data = {
-  foo: 1
-};
 const ITERATE_KEY = Symbol();
 const TriggerType = {
   SET: 'SET',
   ADD: 'ADD',
   DELETE: 'DELETE'
 };
+
 // 对原始数据的代理
-const obj = new Proxy(data, {
-  get(target, key, receiver) {
-    track(target, key);
-    return Reflect.get(target, key, receiver);
-  },
-  set(target, key, newVal, receiver) {
-    // 如果属性不存在，则说明是在添加新属性，负责是设置已有属性
-    const type = Object.prototype.hasOwnProperty.call(target, key) ? TriggerType.SET : TriggerType.ADD;
-    const res = Reflect.set(target, key, newVal, receiver);
-    trigger(target, key, type);
-    return res;
-  },
-  deleteProperty(target, key) {
-    // 检查被操作的属性是否是对象自己的属性
-    const hadKey = Object.prototype.hasOwnProperty.call(target, key);
-    // 使用 Reflect.deleteProperty 完成属性的删除
-    const res = Reflect.deleteProperty(target, key);
+function reactive(obj) {
+  return new Proxy(obj, {
+    get(target, key, receiver) {
+      // 代理对象可以通过 raw 属性访问原始数据
+      if (key === 'raw') {
+        return target;
+      }
 
-    if (res && hadKey) {
-      // 只有当被删除的属性是对象自己的属性并且成功删除时，才触发更新
-      trigger(target, key, TriggerType.DELETE);
+      track(target, key);
+      return Reflect.get(target, key, receiver);
+    },
+    set(target, key, newVal, receiver) {
+      // 先获取旧值
+      const oldVal = target[key];
+
+      // 如果属性不存在，则说明是在添加新属性，负责是设置已有属性
+      const type = Object.prototype.hasOwnProperty.call(target, key) ? TriggerType.SET : TriggerType.ADD;
+      const res = Reflect.set(target, key, newVal, receiver);
+      // target === receiver.raw 说明 receiver 就是 target 的代理对象
+      if (target === receiver.raw) {
+        // 比较新值与旧值，只有当不全等，并且都不是 NaN 的时候才触发响应
+        if (oldVal !== newVal && (oldVal === oldVal || newVal === newVal)) {
+          trigger(target, key, type);
+        }
+      }
+
+      return res;
+    },
+    deleteProperty(target, key) {
+      // 检查被操作的属性是否是对象自己的属性
+      const hadKey = Object.prototype.hasOwnProperty.call(target, key);
+      // 使用 Reflect.deleteProperty 完成属性的删除
+      const res = Reflect.deleteProperty(target, key);
+
+      if (res && hadKey) {
+        // 只有当被删除的属性是对象自己的属性并且成功删除时，才触发更新
+        trigger(target, key, TriggerType.DELETE);
+      }
+
+      return res;
+    },
+    has(target, key) {
+      track(target, key);
+      return Reflect.has(target, key);
+    },
+    ownKeys(target) {
+      // 将副作用函数与 ITERATE_KEY 管理
+      track(target, ITERATE_KEY);
+      return Reflect.ownKeys(target);
     }
-
-    return res;
-  },
-  has(target, key) {
-    track(target, key);
-    return Reflect.has(target, key);
-  },
-  ownKeys(target) {
-    // console.log('ownKeys 触发');
-    // 将副作用函数与 ITERATE_KEY 管理
-    track(target, ITERATE_KEY);
-    return Reflect.ownKeys(target);
-  }
-});
+  });
+}
 
 let temp1, temp2;
 
@@ -225,7 +234,7 @@ function watch(source, cb, options = {}) {
     // 当数据变化时，调用回调函数 cb
     newVal = effectFn();
     // 在调用回调函数 cb 之前，先调用过期回调
-    if(cleanup) {
+    if (cleanup) {
       cleanup();
     }
     cb(newVal, oldVal, onInvalidate);
@@ -270,16 +279,36 @@ function traverse(value, seen = new Set()) {
   return value;
 }
 
+// 原始数据
+const data = {
+  bz: 1,
+  foo: 2,
+  bar: NaN,
+};
+const r = reactive(data);
 effect(() => {
-  console.log('effect run');
-  for (const key in obj) {
-    console.log(key);
-  }
+  console.log(r.bz);
+  console.log(r.foo);
+  console.log(r.bar);
 });
+console.log('测试1：当值发生变化时，是否触发响应');
+r.bz = 2;
+console.log('测试2：当值没有发生变化时，是否触发响应');
+r.foo = 2;
+console.log('测试3：当值为 NaN 时，修改的值为 NaN ，是否触发响应');
+r.bar = NaN;
 
-// 测试：修改属性值，不触发 ITERATE_KEY 关联的副作用函数
-// obj.foo = 2;
-// 测试：新增属性值，触发 ITERATE_KEY 关联的副作用函数
-obj.bar = 4;
-// 测试：删除属性值，触发 ITERATE_KEY 关联的副作用函数
-// delete obj.foo;
+console.log('测试4：修改 child 不存在反而原型 parent 上存在的属性值，是否只响应一次');
+const obj = {};
+const proto = { bar: 1 };
+const child = reactive(obj);
+const parent = reactive(proto);
+// 使用 parent 作为 child 的原型
+Object.setPrototypeOf(child, parent);
+effect(() => {
+  console.log(child.bar);
+});
+child.bar = 2;
+console.log('原始对象和代理对象判断：');
+console.log(child.raw === obj);
+console.log(parent.raw === proto);

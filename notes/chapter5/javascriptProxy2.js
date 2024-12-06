@@ -1,4 +1,4 @@
-// ** 理解 Proxy 和 Reflect
+// ** JavaScript 对象与 Proxy 的工作原理
 
 // 用一个全局变量存储被注册的副作用函数
 let activeEffect;
@@ -8,10 +8,7 @@ const effectStack = [];
 const bucket = new WeakMap();
 // 原始数据
 const data = {
-  foo: 1,
-  get bar() {
-    return this.foo;
-  }
+  foo: 1
 };
 // 对原始数据的代理
 const obj = new Proxy(data, {
@@ -23,6 +20,9 @@ const obj = new Proxy(data, {
     target[key] = newVal;
     trigger(target, key);
     return true;
+  },
+  deleteProperty(target, key) {
+    return Reflect.deleteProperty(target, key);
   }
 });
 
@@ -222,8 +222,6 @@ function traverse(value, seen = new Set()) {
   return value;
 }
 
-effect(() => {
-  console.log(obj.bar);
-});
-
-obj.foo++;
+console.log(obj.foo);
+delete obj.foo;
+console.log(obj.foo);

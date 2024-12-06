@@ -1,6 +1,4 @@
-// * 如何合理触发响应：
-// * 1.修改值但值没有变化，不需要触发响应（包括边界值：NaN）；
-// * 2.修改 child 不存在反而原型 parent 上存在的属性值，只需要触发 child 代理对象的 set 拦截函数，屏蔽 parent 代理对象的 set 拦截函数。
+// ** 浅响应与深响应
 
 // 用一个全局变量存储被注册的副作用函数
 let activeEffect;
@@ -15,8 +13,8 @@ const TriggerType = {
   DELETE: 'DELETE'
 };
 
-// 对原始数据的代理
-function reactive(obj) {
+// 封装 createReative 函数，接收一个参数 isShallow，代表是否为浅响应，默认为 false，即深响应
+function createReative(obj, isShallow = false) {
   return new Proxy(obj, {
     get(target, key, receiver) {
       // 代理对象可以通过 raw 属性访问原始数据
@@ -25,7 +23,17 @@ function reactive(obj) {
       }
 
       track(target, key);
-      return Reflect.get(target, key, receiver);
+      
+      const res = Reflect.get(target, key, receiver);
+      // 如果是浅响应，则直接返回原始值
+      if (isShallow){
+        return res;
+      }
+
+      if (typeof res === 'object' && res !== null) {
+        return reactive(res);
+      }
+      return res;
     },
     set(target, key, newVal, receiver) {
       // 先获取旧值
@@ -67,6 +75,16 @@ function reactive(obj) {
       return Reflect.ownKeys(target);
     }
   });
+}
+
+// 深响应
+function reactive(obj) {
+  return createReative(obj);
+}
+
+// 浅响应
+function shallowReactive(obj) {
+  return createReative(obj, true);
 }
 
 let temp1, temp2;
@@ -281,31 +299,27 @@ function traverse(value, seen = new Set()) {
   return value;
 }
 
-// 原始数据
-// const data = {
-//   // foo: 1
-//   foo: NaN
-// };
-// const obj = reactive(data);
-// effect(() => {
-//   console.log(obj.foo);
-// });
-// 测试：当值没有发送变化时，是否触发响应
-// obj.foo = 1;
-// 测试：当值为 NaN 时，修改的值为 NaN ，是否触发响应
-// obj.foo = NaN;
-
-const obj = {};
-const proto = { bar: 1 };
-const child = reactive(obj);
-const parent = reactive(proto);
-// 使用 parent 作为 child 的原型
-Object.setPrototypeOf(child, parent);
-effect(() => {
-  console.log(child.bar);
+console.log('测试1：修改 obj1.foo.bar 的值，能否触发深响应');
+const obj1 = reactive({
+  foo: {
+    bar: 1
+  }
 });
-// 测试：修改 child 不存在反而原型 parent 上存在的属性值，是否只响应一次
-// 原始对象和代理对象判断
-console.log(child.raw === obj);
-console.log(parent.raw === proto);
-child.bar = 2;
+effect(() => {
+  console.log('effect run: ', obj1.foo.bar);
+});
+obj1.foo.bar = 2;
+
+console.log('测试2：浅响应');
+const obj2 = shallowReactive({
+  foo: {
+    bar: 3
+  }
+});
+effect(() => {
+  console.log('effect run: ', obj2.foo.bar);
+});
+console.log('obj2.foo 是响应的，可以触发副作用函数重新执行');
+obj2.foo = { bar: 4};
+console.log('obj2.foo.bar 不是响应的，不能触发副作用函数重新执行');
+obj2.foo.bar = 5;

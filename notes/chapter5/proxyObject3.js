@@ -1,5 +1,4 @@
-// * 一些数据需要是只读的，当用户尝试修改只读数据时，会收到一条告警信息。
-// * 例如：组件接收到的 props 对象应该是一个只读数据。
+// ** 如何代理 Object
 
 // 用一个全局变量存储被注册的副作用函数
 let activeEffect;
@@ -7,119 +6,52 @@ let activeEffect;
 const effectStack = [];
 // 存储副作用函数的桶
 const bucket = new WeakMap();
+// 原始数据
+const data = {
+  foo: 1
+};
 const ITERATE_KEY = Symbol();
 const TriggerType = {
   SET: 'SET',
   ADD: 'ADD',
   DELETE: 'DELETE'
 };
+// 对原始数据的代理
+const obj = new Proxy(data, {
+  get(target, key, receiver) {
+    track(target, key);
+    return Reflect.get(target, key, receiver);
+  },
+  set(target, key, newVal, receiver) {
+    // 如果属性不存在，则说明是在添加新属性，负责是设置已有属性
+    const type = Object.prototype.hasOwnProperty.call(target, key) ? TriggerType.SET : TriggerType.ADD;
+    const res = Reflect.set(target, key, newVal, receiver);
+    trigger(target, key, type);
+    return res;
+  },
+  deleteProperty(target, key) {
+    // 检查被操作的属性是否是对象自己的属性
+    const hadKey = Object.prototype.hasOwnProperty.call(target, key);
+    // 使用 Reflect.deleteProperty 完成属性的删除
+    const res = Reflect.deleteProperty(target, key);
 
-/**
- * 封装响应式数据
- * @param {*} obj 原始数据
- * @param {Boolean} isShallow 代表是否为浅响应，默认为 false，即深响应；为 true 时，即浅响应
- * @param {Boolean} isReadonly 代表是否只读，默认为 false，即非只读；为 true 时，即只读
- * @returns 
- */
-function createReative(obj, isShallow = false, isReadonly = false) {
-  return new Proxy(obj, {
-    get(target, key, receiver) {
-      // 代理对象可以通过 raw 属性访问原始数据
-      if (key === 'raw') {
-        return target;
-      }
-
-      // 非只读的时候才需要建立响应联系
-      if(!isReadonly) {
-        track(target, key);
-      }
-      
-      const res = Reflect.get(target, key, receiver);
-
-      // 如果是浅响应，则直接返回原始值
-      if (isShallow){
-        return res;
-      }
-
-      if (typeof res === 'object' && res !== null) {
-        // 如果数据为只读，则调用 readonly 对峙进行包装
-        return isReadonly ? readonly(res) : reactive(res);
-      }
-      return res;
-    },
-    set(target, key, newVal, receiver) {
-      // 如果是只读的，则打印警告信息并返回
-      if (isReadonly) {
-        console.warn(`属性 ${key} 是只读的`);
-        return true;
-      }
-
-      // 先获取旧值
-      const oldVal = target[key];
-
-      // 如果属性不存在，则说明是在添加新属性，负责是设置已有属性
-      const type = Object.prototype.hasOwnProperty.call(target, key) ? TriggerType.SET : TriggerType.ADD;
-      const res = Reflect.set(target, key, newVal, receiver);
-      // target === receiver.raw 说明 receiver 就是 target 的代理对象
-      if (target === receiver.raw) {
-        // 比较新值与旧值，只有当不全等，并且都不是 NaN 的时候才触发响应
-        if (oldVal !== newVal && (oldVal === oldVal || newVal === newVal)) {
-          trigger(target, key, type);
-        }
-      }
-
-      return res;
-    },
-    deleteProperty(target, key) {
-      // 如果是只读的，则打印警告信息并返回
-      if (isReadonly) {
-        console.warn(`属性 ${key} 是只读的`);
-        return true;
-      }
-
-      // 检查被操作的属性是否是对象自己的属性
-      const hadKey = Object.prototype.hasOwnProperty.call(target, key);
-      // 使用 Reflect.deleteProperty 完成属性的删除
-      const res = Reflect.deleteProperty(target, key);
-
-      if (res && hadKey) {
-        // 只有当被删除的属性是对象自己的属性并且成功删除时，才触发更新
-        trigger(target, key, TriggerType.DELETE);
-      }
-
-      return res;
-    },
-    has(target, key) {
-      track(target, key);
-      return Reflect.has(target, key);
-    },
-    ownKeys(target) {
-      // 将副作用函数与 ITERATE_KEY 管理
-      track(target, ITERATE_KEY);
-      return Reflect.ownKeys(target);
+    if (res && hadKey) {
+      // 只有当被删除的属性是对象自己的属性并且成功删除时，才触发更新
+      trigger(target, key, TriggerType.DELETE);
     }
-  });
-}
 
-// 深响应
-function reactive(obj) {
-  return createReative(obj);
-}
-
-// 浅响应
-function shallowReactive(obj) {
-  return createReative(obj, true);
-}
-
-// 深只读
-function readonly(obj) {
-  return createReative(obj, false, true);
-}
-
-// 浅只读
-function shallowReadonly(obj) {
-  return createReative(obj, true, true);
-}
+    return res;
+  },
+  has(target, key) {
+    track(target, key);
+    return Reflect.has(target, key);
+  },
+  ownKeys(target) {
+    // 将副作用函数与 ITERATE_KEY 管理
+    track(target, ITERATE_KEY);
+    return Reflect.ownKeys(target);
+  }
+});
 
 let temp1, temp2;
 
@@ -288,7 +220,7 @@ function watch(source, cb, options = {}) {
     // 当数据变化时，调用回调函数 cb
     newVal = effectFn();
     // 在调用回调函数 cb 之前，先调用过期回调
-    if (cleanup) {
+    if(cleanup) {
       cleanup();
     }
     cb(newVal, oldVal, onInvalidate);
@@ -333,20 +265,19 @@ function traverse(value, seen = new Set()) {
   return value;
 }
 
-// 测试：尝试修改只读数据，会得到警告
-// const obj = readonly({ foo: 1 });
-// effect(() => {
-//   console.log(obj.foo); // 可以读取值，但是不需要值副作用函数与数据之间建立响应联系
-// });
-// // obj.foo;
-// obj.foo = 2;
-
-// 测试：obj2.foo.bar 重新赋值是否能成功，成功说明只做到浅只读，没有做到深只读
-// const obj2 = shallowReadonly({
-//   foo: { bar: 1 }
-// });
-const obj2 = readonly({
-  foo: { bar: 1 }
+effect(() => {
+  console.log('effect run');
+  for (const key in obj) {
+    console.log(key);
+  }
 });
-obj2.foo.bar = 2;
-console.log(obj2);
+
+// 测试：修改属性值，不触发 ITERATE_KEY 关联的副作用函数
+console.log('修改操作：');
+obj.foo = 2;
+// 测试：新增属性值，触发 ITERATE_KEY 关联的副作用函数
+console.log('新增操作：');
+obj.bar = 4;
+// 测试：删除属性值，触发 ITERATE_KEY 关联的副作用函数
+console.log('删除操作：');
+delete obj.foo;
