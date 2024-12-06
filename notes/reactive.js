@@ -16,6 +16,7 @@ export const TriggerType = {
 };
 // 定义一个 Map 实例，存储原始对象到代理对象的映射
 const reactiveMap = new Map();
+const wrap = (val) => typeof val === 'object' && val !== null ? reactive(val) : val;
 
 // 存储改进的 Array 方法对象
 const arrayInstrumentations = {};
@@ -56,11 +57,10 @@ const mutableInstrumentations = {
     const target = this.raw;
     // 先判断是否已存在
     const hadKey = target.has(key);
+    // 通过原始数据对象执行 add 方法删除具体的值，注意，这里不需要 .bind 了，因为是直接通过 target 调用并执行的
+    const res = target.add(key);
     // 只有在值不存在的情况下，才需要触发响应
     if (!hadKey){
-      // 通过原始数据对象执行 add 方法删除具体的值，注意，这里不需要 .bind 了，因为是直接通过 target 调用并执行的
-      const res = target.add(key);
-
       // 调用 trigger 函数触发响应，并制定操作类型为 ADD
       trigger(target, key, TriggerType.ADD);
       return res;
@@ -76,7 +76,6 @@ const mutableInstrumentations = {
     if (hadKey){
       trigger(target, key, TriggerType.DELETE);
     }
-
     return res;
   },
   get(key) {
@@ -86,7 +85,7 @@ const mutableInstrumentations = {
     if (hadKey) {
       // 如果得到的结果 res 仍然是可代理的数据，则返回使用 reactive 包装后的响应式数据
       const res = target.get(key);
-      return typeof res === 'object' ? reactive(res) : res;
+      return wrap(res);
     }
   },
   set(key, value) {
@@ -107,8 +106,6 @@ const mutableInstrumentations = {
     }
   },
   forEach(callback, thisArg) {
-    // wrap 函数用来把可代理的值转换为响应式数据
-    const wrap = (val) => typeof val === 'object' ? reactive(val) : val;
     const target = this.raw;
     // 遍历操作与键值对的数量有关，因此任何会修改 Map 对象键值对数量的操作都应该触发副作用函数，例如 add 和 delete 方法，所以这时该让副作用函数与 ITERATE_KEY 建立响应联系
     track(target, ITERATE_KEY);
@@ -150,6 +147,7 @@ export function createReative(obj, isShallow = false, isReadonly = false) {
         }
 
         // 返回定义在 mutableInstrumentations 对象下的方法
+        mutableInstrumentations.isShallow = isShallow;
         return mutableInstrumentations[key];
       }
 
@@ -309,51 +307,45 @@ export function trigger(target, key, type, newVal) {
     }
   }));
 
-  // 只有当操作类型为 ‘ADD’ 或 'DELETE' 或 Map 数据类型的 ‘SET’ 时，才触发与 ITERATE_KEY 相关联的副作用函数重新执行
+  // 1. 数组类型数组，新增、删除对象属性时，对 for...in 循环产生影响
+  // 2. Set 类型数据，add、delete 元素时，对 size 获取产生影响
+  // 3. Map 类型数据，add、delete、set 元素时，对 forEach 循环产生影响
+  // 4. Map 类型数据，add、delete、set 元素时，对 entries()、values() 方法产生影响
   if (
     type === TriggerType.ADD || 
     type === TriggerType.DELETE ||
     (type === TriggerType.SET && getType(target) === 'Map')
   ) {
-    // 取得与 ITERATE_KEY 相关联的副作用函数
     const iterateEffects = depsMap.get(ITERATE_KEY);
-
-    // 将与 ITERATE_KEY 相关联的副作用函数也添加到 effectsToRun
     iterateEffects && iterateEffects.forEach(effectFn => {
       if (effectFn !== activeEffect) {
         effectsToRun.add(effectFn);
       }
     });
   }
-  // 操作类型为 ADD 或 DELETE 并且都是 Map 类型的数据
+  // Map 类型数据，add、delete 元素时，对 keys() 方法产生影响
   if (
     (type === TriggerType.ADD || type === TriggerType.DELETE) &&
     getType(target) === 'Map'
   ) {
     const iterateMapEffects = depsMap.get(MAP_KEY_ITERATE_KEY);
-
     iterateMapEffects && iterateMapEffects.forEach(effectFn => {
       if (effectFn !== activeEffect) {
         effectsToRun.add(effectFn);
       }
     });
   }
-  // * 当操作类型为'ADD'且数据类型为数组时，取出并执行与length属性关联的副作用函数
+  // 设置数组的索引值大于数组的当前长度，视为 add 操作，对 length 属性的获取产生影响，例如 arr[100] = 'bar'，arr.length
   if (Array.isArray(target) && type === TriggerType.ADD) {
-    // 取出与 length 相关联的副作用函数
     const lengthEffects = depsMap.get('length');
-
-    // 将这些副作用函数添加到 effectsToRun 中，待执行
     lengthEffects && lengthEffects.forEach(effectFn => {
       if (effectFn !== activeEffect) {
         effectsToRun.add(effectFn);
       }
     });
   }
-  // 当操作类型为 "ADD" 并且目标对象是数组时，应该取出并执行哪些与 length 属性相关联的副作用函数
+  // 修改数组的 length 属性，effect 里的索引值大于等于新的 length，对数组元素获取产生影响，例如 arr.length = 0，arr[0]
   if (Array.isArray(target) && key === 'length') {
-    // 修改了数组的 length 属性
-    // 对于索引大于或等于新的 length 值的元素，需要把所有相关联的副作用函数取出并添加到 effectsToRun 中待执行
     depsMap.forEach((effects, key) => {
       if (key >= newVal) {
         effects.forEach(effectFn => {
@@ -549,7 +541,6 @@ function traverse(value, seen = new Set()) {
 function iterationMethod() {
   const target = this.raw;
   const itr = target[Symbol.iterator]();
-  const wrap = (val) => typeof val === 'object' && val !== null ? reactive(val) : val;
 
   // 迭代操作与集合中元素的数量有关，只要结合的 size 发生变化，就该触发迭代操作重新执行
   track(target, ITERATE_KEY);
@@ -574,9 +565,8 @@ function iterationMethod() {
 
 function valuesIterationMethod() {
   const target = this.raw;
-  // 通过 target.values 获取原始迭代器方法
   const itr = target.values();
-  const wrap = (val) => typeof val === 'object' ? reactive(val) : val;
+
   track(target, ITERATE_KEY);
 
   return {
@@ -595,9 +585,7 @@ function valuesIterationMethod() {
 
 function keysIterationMethod() {
   const target = this.raw;
-  // 通过 target.keys 获取原始迭代器方法
   const itr = target.keys();
-  const wrap = (val) => typeof val === 'object' ? reactive(val) : val;
 
   track(target, MAP_KEY_ITERATE_KEY);
 
