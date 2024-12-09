@@ -1,3 +1,5 @@
+// ** 渲染器与响应系统的结合
+
 import { effect, ref } from '../reactive.js';
 
 function renderer(domString, container) {
@@ -9,4 +11,8 @@ const count = ref(1);
 effect(() => {
   renderer(`<h1>${count.value}</h1>`, document.getElementById('app'));
 });
-count.value++;
+
+
+setTimeout(() => {
+  count.value++;
+}, 2000);
