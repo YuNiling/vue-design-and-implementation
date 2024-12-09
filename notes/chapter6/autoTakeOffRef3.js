@@ -1,7 +1,4 @@
-// * 自动脱 ref
-// * 前提情景：toRefs 将响应式数据的第一层属性值转换成 ref，在模版访问数据时，需要通过 value 属性才能访问值，造成用户的心智负担。
-// * 概念分析：为了解决上面问题，需要实现自动脱 ref 能力，即如果读取的属性是一个 ref，则直接将该 ref 对应的 value 属性值返回。
-// * 应用场景：在 Vue.js 组件中 setup 方法 return 返回对象时，就会将这个对象传递给 proxyRefs 函数进行处理，所以模板访问 ref 的值无需通过 value 属性来访问。
+// ** 自动脱 ref
 
 import { reactive } from "../reactive.js";
 
@@ -65,24 +62,21 @@ function proxyRefs(target) {
   });
 }
 
-// 测试1：ref 的 value 属性值方法
-// const obj = reactive({ foo: 1, bar: 2 });
-// console.log(obj.foo);
-// console.log(obj.bar);
-// const newObj = { ...toRefs(obj) };
-// console.log(newObj.foo.value);
-// console.log(newObj.bar.value);
+console.log('测试1：获取 ref 的 value 属性值方法');
+const obj1 = reactive({ foo: 1, bar: 2 });
+const newObj1 = { ...toRefs(obj1) };
+console.log(obj1.foo, newObj1.foo.value);
+console.log(obj1.bar, newObj1.bar.value);
 
-// 测试2：自动脱 ref 实现（读取属性）
-// const obj = reactive({ foo: 1, bar: 2 });
-// console.log(obj.foo);
-// console.log(obj.bar);
-// const newObj = proxyRefs({ ...toRefs(obj) });
-// console.log(newObj.foo);
-// console.log(newObj.bar);
+console.log('测试2：自动脱 ref 实现（读取属性）');
+const obj2 = reactive({ foo: 1, bar: 2 });
+const newObj2 = proxyRefs({ ...toRefs(obj2) });
+console.log(obj2.foo, newObj2.foo);
+console.log(obj2.bar, newObj2.bar);
 
-// 测试3：自动脱 ref 实现（设置属性值）
-const obj = reactive({ foo: 1, bar: 2 });
-const newObj = proxyRefs({ ...toRefs(obj) });
-newObj.foo = 3;
-console.log(newObj.foo);
+console.log('测试3：自动脱 ref 实现（设置属性值）');
+const obj3 = reactive({ foo: 1, bar: 2 });
+const newObj3 = proxyRefs({ ...toRefs(obj3) });
+newObj3.foo = 3;
+console.log('设置 newObj3.foo 为 3');
+console.log('newObj3.foo', newObj3.foo);
