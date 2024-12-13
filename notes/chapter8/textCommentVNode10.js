@@ -1,43 +1,7 @@
-// * 文本节点和注释节点
-// import { effect, ref } from '../reactive.js';
+// ** 文本节点和注释节点
 
-// 文本节点的 type 标识
-const Text = Symbol();
-// 注释节点的 type 标识
-const Comment = Symbol();
-
-/**
- * 判断是否应该作为 DOM Properties 设置
- * @param {*} el 
- * @param {*} key 
- * @param {*} value 
- * @returns 
- */
-function shouldSetAsProps(el, key, value) {
-  // 特殊处理
-  if (key === 'form' && el.tagName === 'INPUT') return false;
-  // 用 in 操作符判断 key 是否存在对应的 DOM Properties
-  return key in el;
-}
-
-/**
- * 将值序列化为字符串
- * @param {String/Array/Object} value 
- * @returns 
- */
-function normalizeClass(value) {
-  if (typeof value === 'string') return value;
-
-  if (Array.isArray(value)) {
-    return value.map(normalizeClass).filter(Boolean).join(' ');
-  }
-
-  if (typeof value === 'object') {
-    return Object.keys(value)
-      .filter(key => value[key])
-      .join(' ');
-  }
-}
+import { shouldSetAsProps } from '../utils.js';
+import { Text, Comment } from '../NODE_TYPE.js';
 
 // 创建渲染器
 function createRenderer(options) {
@@ -48,9 +12,10 @@ function createRenderer(options) {
     setElementText,
     insert,
     patchProps,
-    setText
+    setText,
+    createText,
+    createComment
   } = options;
-
 
   /**
    * “打补丁”（或更新或挂载）
@@ -79,7 +44,7 @@ function createRenderer(options) {
       // n2 是文本节点
       if (!n1) {
         // 如果没有旧节点，直接进行挂载
-        const el = n2.el = document.createTextNode(n2.children);
+        const el = n2.el = createText(n2.children);
         insert(el, container);
       } else { 
         // 如果旧节点存在，只需要使用新的文本节点的文本内容更新旧文本节点内容即可
@@ -92,7 +57,7 @@ function createRenderer(options) {
       // n2 是注释节点
       if (!n1) {
         // 如果没有旧节点，直接进行挂载
-        const el = n2.el = document.createComment(n2.children);
+        const el = n2.el = createComment(n2.children);
         insert(el, container);
       } else { 
         // 如果旧节点存在，只需要使用新的文本节点的文本内容更新旧文本节点内容即可
@@ -239,21 +204,23 @@ function createRenderer(options) {
 const renderer = createRenderer({
   // 用于创建元素
   createElement(tag) {
-    // console.log(`创建元素 ${tag}`);
     return document.createElement(tag);
   },
   // 用于设置元素的文本节点
   setElementText(el, text) {
-    // console.log(`设置 ${el.outerHTML} 的文本内容：${text}`);
     el.textContent = text;
+  },
+  createText(text) {
+    return document.createTextNode(text);
   },
   setText(el, text) {
     el.nodeValue = text;
   },
+  createComment(comment) {
+    return document.createComment(comment);
+  },
   // 用于在给定的 parent 下添加指定元素
   insert(el, parent, anchor = null){
-    console.log(el.outerHTML);
-    // console.log(`将 ${el.outerHTML} 添加到 ${parent.outerHTML} 下`);
     parent.insertBefore(el, anchor);
   },
   // 将属性设置相关操作封装到 patchProps 函数中，并作为渲染器选项传递
@@ -307,46 +274,61 @@ const renderer = createRenderer({
   }
 });
 
-// 测试1：创建文本节点并更新
-// const vnode1 = {
-//   type: Text,
-//   children: '我是文本内容 1111'
-// };
-// const vnode2 = {
-//   type: Text,
-//   children: '我是文本内容 2222'
-// };
-// renderer.render(vnode1, document.querySelector('#app'));
-// setTimeout(() => {
-//   renderer.render(vnode2, document.querySelector('#app'));
-// }, 1000);
+for (let i = 1; i <= 3; i++) {
+  let box = document.createElement('box');
+  box.id = `box${i}`
+  document.querySelector('#app').appendChild(box);
+}
 
-// 测试2：创建注释节点并更新
-// const vnode1 = {
-//   type: Comment,
-//   children: '我是注释内容 1111'
-// };
-// const vnode2 = {
-//   type: Comment,
-//   children: '我是注释内容 2222'
-// };
-// renderer.render(vnode1, document.querySelector('#app'));
-// setTimeout(() => {
-//   renderer.render(vnode2, document.querySelector('#app'));
-// }, 1000);
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// 测试3：<div><!-- <div>注释节点</div> -->我是文本节点</div>
-const vnode = {
-  type: 'div',
-  children: [
-    {
-      type: Comment,
-      children: '<div>注释节点</div>'
-    },
-    {
-      type: Text,
-      children: '我是文本节点'
-    }
-  ]
-};
-renderer.render(vnode, document.querySelector('#app'));
+async function test() {
+  console.log(`测试1：创建文本节点并更新`);
+  renderer.render({
+    type: Text,
+    children: '我是文本内容 1111'
+  }, document.querySelector('#box1'));
+  console.log(document.getElementById('box1'));
+
+  await delay(1000);
+  renderer.render({
+    type: Text,
+    children: '我是文本内容 2222'
+  }, document.querySelector('#box1'));
+  console.log(document.getElementById('box1'));
+
+  // await delay(1000);
+  console.log(`测试2：创建注释节点并更新`);
+  renderer.render({
+    type: Comment,
+    children: '我是注释内容 1111'
+  }, document.querySelector('#box2'));
+  console.log(document.getElementById('box2'));
+
+  await delay(1000);
+  renderer.render({
+    type: Comment,
+    children: '我是注释内容 2222'
+  }, document.querySelector('#box2'));
+  console.log(document.getElementById('box2'));
+
+  await delay(1000);
+  console.log(`测试3：<div><!-- <div>注释节点</div> -->我是文本节点</div>`);
+  const vnode = {
+    type: 'div',
+    children: [
+      {
+        type: Comment,
+        children: '<div>注释节点</div>'
+      },
+      {
+        type: Text,
+        children: '我是文本节点'
+      }
+    ]
+  };
+  renderer.render(vnode, document.querySelector('#box3'));
+  console.log(document.getElementById('box3'));
+}
+
+test();

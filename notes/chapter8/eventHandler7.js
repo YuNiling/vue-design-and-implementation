@@ -1,42 +1,6 @@
-// * 事件冒泡与更新时机问题
-// * 1.问题：更新操作发生在事件冒泡之前
-// * 2.解决：屏蔽所有绑定时间晚于事件触发时间的事件处理函数的执行
-import { effect, ref } from '../reactive.js';
+// ** 事件的处理
 
-/**
- * 判断是否应该作为 DOM Properties 设置
- * @param {*} el 
- * @param {*} key 
- * @param {*} value 
- * @returns 
- */
-function shouldSetAsProps(el, key, value) {
-  // 特殊处理
-  if (key === 'form' && el.tagName === 'INPUT') return false;
-  // 用 in 操作符判断 key 是否存在对应的 DOM Properties
-  return key in el;
-}
-
-/**
- * 将值序列化为字符串
- * @param {String/Array/Object} value 
- * @returns 
- */
-function normalizeClass(value) {
-  if (typeof value === 'string') return value;
-
-  if (Array.isArray(value)) {
-    let t = value.map(normalizeClass).filter(Boolean).join(' ');
-    console.log(t);
-    return t;
-  }
-
-  if (typeof value === 'object') {
-    return Object.keys(value)
-      .filter(key => value[key])
-      .join(' ');
-  }
-}
+import { shouldSetAsProps } from '../utils.js';
 
 // 创建渲染器
 function createRenderer(options) {
@@ -49,9 +13,8 @@ function createRenderer(options) {
     patchProps
   } = options;
 
-
   /**
-   * “打补丁”（或更新或挂载）
+   * “打补丁”（或更新）
    * @param {*} n1 旧 vnode
    * @param {*} n2 新 vnode
    * @param {*} container 容器
@@ -84,65 +47,8 @@ function createRenderer(options) {
    * @param {*} n2 新 vnode
    */
   function patchElement(n1, n2) {
-    const el = n2.el = n1.el;
-    const oldProps = n1.props;
-    const newProps = n2.props;
-
-    // 第一步：更新 props
-    for (const key in newProps) {
-      if (newProps[key] !== oldProps[key]) {
-        patchProps(el, key, oldProps[key], newProps[key]);
-      }
-    }
-    for (const key in oldProps) {
-      if (!(key in newProps)) {
-        patchProps(el, key, oldProps[key], null);
-      }
-    }
-
-    // 第二步：更新 children
-    patchChildren(n1, n2, el);
+    console.log('打补丁...');
   }
-
-  /**
-   * 更新节点的 children，进行打补丁
-   * @param {*} n1 旧 vnode
-   * @param {*} n2 新 vnode
-   * @param {*} container 当前正在被打补丁的 DOM 元素
-   */
-    function patchChildren(n1, n2, container) {
-      // ** 新旧节点的类型有三种可能：没有子节点、文本节点以及一组子节点
-      if (typeof n2.children === 'string') {
-        // ** 新节点的类型是文本节点
-        if (Array.isArray(n1.children)) {
-          // 只有当旧节点为一组子节点时，才需要逐个卸载，其他情况下什么都不需要
-          n1.children.forEach((c) => unmount(c));
-        }
-        // 最后将新的文本节点内容设置给容器元素
-        setElementText(container, n2.children);
-      } else if (Array.isArray(n2.children)) {
-        // ** 新节点是一组子节点
-        if (Array.isArray(n1.children)) {
-          // 新旧节点都是一组子节点
-          // 将旧的一组子节点全部卸载
-          n1.children.forEach(c => unmount(c));
-          // 再将新的一组子节点全部挂载到容器上
-          n2.children.forEach(c => patch(null, c, container));
-        } else {
-          // 旧子节点要么是文本节点，要么不存在
-          // 但无论哪种情况，我们都只需要将容器清空，然后将新的一组子节点逐个挂载
-          setElementText(container, '');
-          n2.children.forEach(c => patch(null, c, container));
-        }
-      } else {
-        // ** 新节点是不存在
-        if (Array.isArray(n1.children)) {
-          n1.children.forEach(c => unmount(c));
-        } else if (typeof n1.children === 'string') {
-          setElementText(container, '');
-        }
-      }
-    }
 
   /**
    * 挂载元素
@@ -211,18 +117,14 @@ function createRenderer(options) {
 const renderer = createRenderer({
   // 用于创建元素
   createElement(tag) {
-    // console.log(`创建元素 ${tag}`);
     return document.createElement(tag);
   },
   // 用于设置元素的文本节点
   setElementText(el, text) {
-    // console.log(`设置 ${el.outerHTML} 的文本内容：${text}`);
     el.textContent = text;
   },
   // 用于在给定的 parent 下添加指定元素
   insert(el, parent, anchor = null){
-    // console.log(el.outerHTML);
-    // console.log(`将 ${el.outerHTML} 添加到 ${parent.outerHTML} 下`);
     parent.insertBefore(el, anchor);
   },
   // 将属性设置相关操作封装到 patchProps 函数中，并作为渲染器选项传递
@@ -237,9 +139,6 @@ const renderer = createRenderer({
           // 如果没有 invoker，则将一个伪造的 invoker 缓存到 el._vei 中
           // vei 是 vue event invoker 的首字母缩写
           invoker = el._vei[key] = (e) => {
-            // e.timeStamp 是事件触发时间
-            // 如果事件触发时间早于事件绑定时间，则不执行事件处理函数
-            if (e.timeStamp < invoker.attached) return;
             // 当伪造的事件处理函数执行时，会执行真正的事件处理函数
             if (Array.isArray(invoker.value)) {
               invoker.value.forEach(fn => fn(e));
@@ -249,8 +148,6 @@ const renderer = createRenderer({
           };
           // 将真正的事件处理函数赋值给 invoker.value
           invoker.value = nextValue;
-          // 添加 invoker.attached 属性，存储事件绑定时间
-          invoker.attached = performance.now();
           // 绑定 invoker 作为事件处理函数
           el.addEventListener(name, invoker);
         } else {
@@ -276,28 +173,52 @@ const renderer = createRenderer({
   }
 });
 
-// 测试：初次点击子元素，父元素的事件没有绑定，不该触发
-const bol = ref(false);
-effect(() => {
-  const vnode = {
-    type: 'div',
-    props: bol.value ? {
-      onClick: () => {
-        console.log('父元素 clicked');
-      }
-    } : {},
-    children: [
-      {
-        type: 'p',
-        props: {
-          onClick: () => {
-            console.log('子元素 clicked');
-            bol.value = true;
-          }
-        },
-        children: 'text'
+for (let i = 1; i <= 3; i++) {
+  let box = document.createElement('box');
+  box.id = `box${i}`
+  document.querySelector('#app').appendChild(box);
+}
+
+console.log('测试1：p 元素绑定一个事件: click');
+const vnode1 = {
+  type: 'p',
+  props: {
+    onClick: () => {
+      console.log('clicked 111');
+    }
+  },
+  children: 'p 元素绑定一个事件: click'
+};
+renderer.render(vnode1, document.querySelector('#box1'));
+
+console.log('测试2：p 元素绑定多种类型的事件: click 和 contextmenu');
+const vnode2 = {
+  type: 'p',
+  props: {
+    onClick: () => {
+      console.log('clicked 222');
+    },
+    onContextmenu: () => {
+      console.log('contextmenu 222');
+    }
+  },
+  children: 'p 元素绑定多种类型的事件: click 和 contextmenu'
+};
+renderer.render(vnode2, document.querySelector('#box2'));
+
+console.log('测试3：p 元素的 click 事件绑定多个事件处理函数：fn1 和 fn2');
+const vnode = {
+  type: 'p',
+  props: {
+    onClick: [
+      () => {
+        console.log('fn1 clicked');
+      },
+      () => {
+        console.log('fn2 clicked');
       }
     ]
-  };
-  renderer.render(vnode, document.querySelector('#app'));
-});
+  },
+  children: 'p 元素的 click 事件绑定多个事件处理函数：fn1 和 fn2'
+};
+renderer.render(vnode, document.querySelector('#box3'));

@@ -1,37 +1,4 @@
-/**
- * 判断是否应该作为 DOM Properties 设置
- * @param {*} el 
- * @param {*} key 
- * @param {*} value 
- * @returns 
- */
-function shouldSetAsProps(el, key, value) {
-  // 特殊处理
-  if (key === 'form' && el.tagName === 'INPUT') return false;
-  // 用 in 操作符判断 key 是否存在对应的 DOM Properties
-  return key in el;
-}
-
-/**
- * 将值序列化为字符串
- * @param {String/Array/Object} value 
- * @returns 
- */
-function normalizeClass(value) {
-  if (typeof value === 'string') return value;
-
-  if (Array.isArray(value)) {
-    let t = value.map(normalizeClass).filter(Boolean).join(' ');
-    console.log(t);
-    return t;
-  }
-
-  if (typeof value === 'object') {
-    return Object.keys(value)
-      .filter(key => value[key])
-      .join(' ');
-  }
-}
+// ** 挂载子节点和元素的属性
 
 // 创建渲染器
 function createRenderer(options) {
@@ -40,10 +7,8 @@ function createRenderer(options) {
   const {
     createElement,
     setElementText,
-    insert,
-    patchProps
+    insert
   } = options;
-
 
   /**
    * “打补丁”（或更新）
@@ -83,7 +48,9 @@ function createRenderer(options) {
     if (vnode.props) {
       // 遍历 vnode.props
       for (const key in vnode.props) {
-        patchProps(el, key, null, vnode.props[key]);
+        // 调用 setAttribute 将属性设置到元素上
+        el.setAttribute(key, vnode.props[key]);
+        // el[key] = vnode.props[key]; // 直接设置也可以
       }
     }
 
@@ -116,53 +83,32 @@ function createRenderer(options) {
   };
 }
 
-// 测试：响应数据值变更，会导致副作用函数重新执行，渲染函数重新调用
-const vnode = {
-  type: 'p',
-  props: {
-    // class: normalizeClass('foo bar')
-    // class: normalizeClass({
-    //   foo: true,
-    //   bar: false,
-    //   baz: true
-    // })
-    class: normalizeClass([
-      'foo bar',
-      { baz: true, big: false }
-    ])
-  }
-};
 const renderer = createRenderer({
   // 用于创建元素
   createElement(tag) {
-    console.log(`创建元素 ${tag}`);
     return document.createElement(tag);
   },
   // 用于设置元素的文本节点
   setElementText(el, text) {
-    console.log(`设置 ${el.outerHTML} 的文本内容：${text}`);
     el.textContent = text;
   },
   // 用于在给定的 parent 下添加指定元素
   insert(el, parent, anchor = null){
-    console.log(`将 ${el.outerHTML} 添加到 ${parent.outerHTML} 下`);
     parent.insertBefore(el, anchor);
-  },
-  // 将属性设置相关操作封装到 patchProps 函数中，并作为渲染器选项传递
-  patchProps(el, key, prevValue, nextValue) {
-    if (shouldSetAsProps(el, key, nextValue)) {
-      const type = typeof el[key];
-      // 对 class 进行特殊处理
-      if (key === 'class') {
-        el.className = nextValue || '';
-      } else if (type === 'boolean' && nextValue === '') {
-        el[key] = true;
-      } else {
-        el[key] = nextValue;
-      }
-    } else {
-      el.setAttribute(key, nextValue);
-    }
   }
 });
+
+console.log('测试：div 有子节点 p，div 节点有属性 id = foo');
+const vnode = {
+  type: 'div',
+  props: {
+    id: 'foo'
+  },
+  children: [
+    {
+      type: 'p',
+      children: 'hello'
+    }
+  ]
+};
 renderer.render(vnode, document.querySelector('#app'));

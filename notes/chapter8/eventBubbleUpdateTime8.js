@@ -1,45 +1,7 @@
-// * Fragment（片段）：是一个 vnode，用来描述多个根节点模板。
-// * 渲染 Fragment 节点与其他节点的区别是：Fragment 本身并不渲染任何内容，只需要处理它的子节点即可。
+// ** 事件冒泡与更新时机问题（先看下一章节：《更新子节点》，再看这章节）
 
-// 文本节点的 type 标识
-const Text = Symbol();
-// 注释节点的 type 标识
-const Comment = Symbol();
-// Fragment 节点的 type 标识
-const Fragment = Symbol();
-
-/**
- * 判断是否应该作为 DOM Properties 设置
- * @param {*} el 
- * @param {*} key 
- * @param {*} value 
- * @returns 
- */
-function shouldSetAsProps(el, key, value) {
-  // 特殊处理
-  if (key === 'form' && el.tagName === 'INPUT') return false;
-  // 用 in 操作符判断 key 是否存在对应的 DOM Properties
-  return key in el;
-}
-
-/**
- * 将值序列化为字符串
- * @param {String/Array/Object} value 
- * @returns 
- */
-function normalizeClass(value) {
-  if (typeof value === 'string') return value;
-
-  if (Array.isArray(value)) {
-    return value.map(normalizeClass).filter(Boolean).join(' ');
-  }
-
-  if (typeof value === 'object') {
-    return Object.keys(value)
-      .filter(key => value[key])
-      .join(' ');
-  }
-}
+import { shouldSetAsProps } from '../utils.js';
+import { effect, ref } from '../reactive.js';
 
 // 创建渲染器
 function createRenderer(options) {
@@ -49,10 +11,8 @@ function createRenderer(options) {
     createElement,
     setElementText,
     insert,
-    patchProps,
-    setText
+    patchProps
   } = options;
-
 
   /**
    * “打补丁”（或更新或挂载）
@@ -76,41 +36,6 @@ function createRenderer(options) {
         mountElement(n2, container);
       } else {
         patchElement(n1, n2);
-      }
-    } else if (type === Text) {
-      // n2 是文本节点
-      if (!n1) {
-        // 如果没有旧节点，直接进行挂载
-        const el = n2.el = document.createTextNode(n2.children);
-        insert(el, container);
-      } else { 
-        // 如果旧节点存在，只需要使用新的文本节点的文本内容更新旧文本节点内容即可
-        const el = n2.el = n1.el;
-        if (n2.children !== n1.children) {
-          setText(el, n2.children);
-        }
-      }
-    } else if (type === Comment) {
-      // n2 是注释节点
-      if (!n1) {
-        // 如果没有旧节点，直接进行挂载
-        const el = n2.el = document.createComment(n2.children);
-        insert(el, container);
-      } else { 
-        // 如果旧节点存在，只需要使用新的文本节点的文本内容更新旧文本节点内容即可
-        const el = n2.el = n1.el;
-        if (n2.children !== n1.children) {
-          setText(el, n2.children);
-        }
-      }
-    } else if (type === Fragment) {
-      // n2 是 Fragment
-      if (!n1) {
-        // 如果旧 vnode 不存在，则只需要将 Fragment 的 children 逐个挂载即可
-        n2.children.forEach(c => patch(null, c, container))
-      } else {
-        // 如果旧 vnode 存在，则只需要更新 Fragment 的 children 即可
-        patchChildren(n1, n2, container)
       }
     } else if (typeof type === 'object') {
       // 如果 n2.type 的值的类型是对象，则它描述的是组件
@@ -149,39 +74,39 @@ function createRenderer(options) {
    * @param {*} n2 新 vnode
    * @param {*} container 当前正在被打补丁的 DOM 元素
    */
-    function patchChildren(n1, n2, container) {
-      // ** 新旧节点的类型有三种可能：没有子节点、文本节点以及一组子节点
-      if (typeof n2.children === 'string') {
-        // ** 新节点的类型是文本节点
-        if (Array.isArray(n1.children)) {
-          // 只有当旧节点为一组子节点时，才需要逐个卸载，其他情况下什么都不需要
-          n1.children.forEach((c) => unmount(c));
-        }
-        // 最后将新的文本节点内容设置给容器元素
-        setElementText(container, n2.children);
-      } else if (Array.isArray(n2.children)) {
-        // ** 新节点是一组子节点
-        if (Array.isArray(n1.children)) {
-          // 新旧节点都是一组子节点
-          // 将旧的一组子节点全部卸载
-          n1.children.forEach(c => unmount(c));
-          // 再将新的一组子节点全部挂载到容器上
-          n2.children.forEach(c => patch(null, c, container));
-        } else {
-          // 旧子节点要么是文本节点，要么不存在
-          // 但无论哪种情况，我们都只需要将容器清空，然后将新的一组子节点逐个挂载
-          setElementText(container, '');
-          n2.children.forEach(c => patch(null, c, container));
-        }
+  function patchChildren(n1, n2, container) {
+    // ** 新旧节点的类型有三种可能：没有子节点、文本节点以及一组子节点
+    if (typeof n2.children === 'string') {
+      // ** 新节点的类型是文本节点
+      if (Array.isArray(n1.children)) {
+        // 只有当旧节点为一组子节点时，才需要逐个卸载，其他情况下什么都不需要
+        n1.children.forEach((c) => unmount(c));
+      }
+      // 最后将新的文本节点内容设置给容器元素
+      setElementText(container, n2.children);
+    } else if (Array.isArray(n2.children)) {
+      // ** 新节点是一组子节点
+      if (Array.isArray(n1.children)) {
+        // 新旧节点都是一组子节点
+        // 将旧的一组子节点全部卸载
+        n1.children.forEach(c => unmount(c));
+        // 再将新的一组子节点全部挂载到容器上
+        n2.children.forEach(c => patch(null, c, container));
       } else {
-        // ** 新节点是不存在
-        if (Array.isArray(n1.children)) {
-          n1.children.forEach(c => unmount(c));
-        } else if (typeof n1.children === 'string') {
-          setElementText(container, '');
-        }
+        // 旧子节点要么是文本节点，要么不存在
+        // 但无论哪种情况，我们都只需要将容器清空，然后将新的一组子节点逐个挂载
+        setElementText(container, '');
+        n2.children.forEach(c => patch(null, c, container));
+      }
+    } else {
+      // ** 新节点是不存在
+      if (Array.isArray(n1.children)) {
+        n1.children.forEach(c => unmount(c));
+      } else if (typeof n1.children === 'string') {
+        setElementText(container, '');
       }
     }
+  }
 
   /**
    * 挂载元素
@@ -238,12 +163,6 @@ function createRenderer(options) {
    * @param {*} vnode 虚拟节点
    */
   function unmount(vnode) {
-    // 在卸载时，如果卸载的 vnode 类型为 Fragment，则需要卸载其 children
-    if (vnode.type === Fragment) {
-      vnode.children.forEach(c => unmount(c));
-      return;
-    }
-    
     const parent = vnode.el.parentNode;
     if (parent) parent.removeChild(vnode.el);
   }
@@ -256,21 +175,14 @@ function createRenderer(options) {
 const renderer = createRenderer({
   // 用于创建元素
   createElement(tag) {
-    // console.log(`创建元素 ${tag}`);
     return document.createElement(tag);
   },
   // 用于设置元素的文本节点
   setElementText(el, text) {
-    // console.log(`设置 ${el.outerHTML} 的文本内容：${text}`);
     el.textContent = text;
-  },
-  setText(el, text) {
-    el.nodeValue = text;
   },
   // 用于在给定的 parent 下添加指定元素
   insert(el, parent, anchor = null){
-    console.log(el.outerHTML);
-    // console.log(`将 ${el.outerHTML} 添加到 ${parent.outerHTML} 下`);
     parent.insertBefore(el, anchor);
   },
   // 将属性设置相关操作封装到 patchProps 函数中，并作为渲染器选项传递
@@ -287,7 +199,11 @@ const renderer = createRenderer({
           invoker = el._vei[key] = (e) => {
             // e.timeStamp 是事件触发时间
             // 如果事件触发时间早于事件绑定时间，则不执行事件处理函数
-            if (e.timeStamp < invoker.attached) return;
+            console.log(`${el.tagName} 触发事件 ${name}，触发事件为：${e.timeStamp}`);
+            if (e.timeStamp < invoker.attached) {
+              console.log(`由于 ${e.timeStamp} < ${invoker.attached}，屏蔽 ${el.tagName} 的 ${name} 事件`);
+              return;
+            }
             // 当伪造的事件处理函数执行时，会执行真正的事件处理函数
             if (Array.isArray(invoker.value)) {
               invoker.value.forEach(fn => fn(e));
@@ -301,6 +217,7 @@ const renderer = createRenderer({
           invoker.attached = performance.now();
           // 绑定 invoker 作为事件处理函数
           el.addEventListener(name, invoker);
+          console.log(`${el.tagName} 绑定事件 ${name}，绑定时间为：${invoker.attached}`);
         } else {
           // 如果 invoker 存在，意味着更新，并且值需要更新 invoker.value 的值即可。
           invoker.value = nextValue;
@@ -324,18 +241,28 @@ const renderer = createRenderer({
   }
 });
 
-// 测试：
-const vnode = {
-  type: 'ul',
-  children: [
-    {
-      type: Fragment,
-      children: [
-        { type: 'li', children: '1' },
-        { type: 'li', children: '2' },
-        { type: 'li', children: '3' }
-      ]
-    }
-  ]
-};
-renderer.render(vnode, document.querySelector('#app'));
+console.log('测试：初次点击子元素，父元素的事件没有绑定，不该触发');
+const bol = ref(false);
+effect(() => {
+  const vnode = {
+    type: 'div',
+    props: bol.value ? {
+      onClick: () => {
+        console.log('父元素 clicked ******');
+      }
+    } : {},
+    children: [
+      {
+        type: 'p',
+        props: {
+          onClick: () => {
+            console.log('子元素 clicked ******');
+            bol.value = true;
+          }
+        },
+        children: 'text'
+      }
+    ]
+  };
+  renderer.render(vnode, document.querySelector('#app'));
+});

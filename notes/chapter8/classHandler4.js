@@ -1,37 +1,6 @@
-/**
- * 判断是否应该作为 DOM Properties 设置
- * @param {*} el 
- * @param {*} key 
- * @param {*} value 
- * @returns 
- */
-function shouldSetAsProps(el, key, value) {
-  // 特殊处理
-  if (key === 'form' && el.tagName === 'INPUT') return false;
-  // 用 in 操作符判断 key 是否存在对应的 DOM Properties
-  return key in el;
-}
+// ** class 的处理
 
-/**
- * 将值序列化为字符串
- * @param {String/Array/Object} value 
- * @returns 
- */
-function normalizeClass(value) {
-  if (typeof value === 'string') return value;
-
-  if (Array.isArray(value)) {
-    let t = value.map(normalizeClass).filter(Boolean).join(' ');
-    console.log(t);
-    return t;
-  }
-
-  if (typeof value === 'object') {
-    return Object.keys(value)
-      .filter(key => value[key])
-      .join(' ');
-  }
-}
+import { shouldSetAsProps, normalizeClass } from '../utils.js';
 
 // 创建渲染器
 function createRenderer(options) {
@@ -43,7 +12,6 @@ function createRenderer(options) {
     insert,
     patchProps
   } = options;
-
 
   /**
    * “打补丁”（或更新）
@@ -66,8 +34,8 @@ function createRenderer(options) {
    * @param {*} container 挂载点
    */
   function mountElement(vnode, container) {
-    // 创建 DOM 元素，让 vnode.el 引用真实 DOM 元素
-    const el = vnode.el = createElement(vnode.type);
+    // 创建 DOM 元素
+    const el = createElement(vnode.type);
 
     // 处理子节点，如果子节点是字符串，代表元素具有文本节点
     if (typeof vnode.children === 'string') {
@@ -87,6 +55,7 @@ function createRenderer(options) {
       }
     }
 
+    console.log('el', el);
     insert(el, container);
   }
 
@@ -102,7 +71,8 @@ function createRenderer(options) {
     } else {
       if (container._vnode) {
         // 旧 vnode 存在，且新 vnode 不存在，说明是卸载（unmount）操作
-        unmount(container._vnode);
+        // 只需要将 container 内的 DOM 清空即可
+        container.innerHTML = '';
       }
     }
 
@@ -110,58 +80,30 @@ function createRenderer(options) {
     container._vnode = vnode;
   }
 
-  /**
-   * 卸载节点：将指定虚拟节点对应的真实 DOM 元素从父元素中移除
-   * @param {*} vnode 虚拟节点
-   */
-  function unmount(vnode) {
-    const parent = vnode.el.parentNode;
-    if (parent) parent.removeChild(vnode.el);
-  }
-
   return {
     render
   };
 }
 
-// 测试：响应数据值变更，会导致副作用函数重新执行，渲染函数重新调用
-const vnode = {
-  type: 'p',
-  props: {
-    // class: normalizeClass('foo bar')
-    // class: normalizeClass({
-    //   foo: true,
-    //   bar: false,
-    //   baz: true
-    // })
-    class: normalizeClass([
-      'foo bar',
-      { baz: true, big: false }
-    ])
-  }
-};
 const renderer = createRenderer({
   // 用于创建元素
   createElement(tag) {
-    console.log(`创建元素 ${tag}`);
     return document.createElement(tag);
   },
   // 用于设置元素的文本节点
   setElementText(el, text) {
-    console.log(`设置 ${el.outerHTML} 的文本内容：${text}`);
     el.textContent = text;
   },
   // 用于在给定的 parent 下添加指定元素
   insert(el, parent, anchor = null){
-    console.log(`将 ${el.outerHTML} 添加到 ${parent.outerHTML} 下`);
     parent.insertBefore(el, anchor);
   },
   // 将属性设置相关操作封装到 patchProps 函数中，并作为渲染器选项传递
   patchProps(el, key, prevValue, nextValue) {
     if (shouldSetAsProps(el, key, nextValue)) {
       const type = typeof el[key];
-      // 对 class 进行特殊处理
       if (key === 'class') {
+        // 对 class 进行特殊处理
         el.className = nextValue || '';
       } else if (type === 'boolean' && nextValue === '') {
         el[key] = true;
@@ -173,7 +115,34 @@ const renderer = createRenderer({
     }
   }
 });
-renderer.render(vnode, document.querySelector('#app'));
-setTimeout(() => {
-  renderer.render(null, document.querySelector('#app'));
-}, 1000);
+
+
+for (let i = 1; i <= 3; i++) {
+  let box = document.createElement('box');
+  box.id = `box${i}`
+  document.querySelector('#app').appendChild(box);
+}
+
+console.log(`测试1：'foo bar'`);
+renderer.render({
+  type: 'p',
+  props: {
+    class: normalizeClass('foo bar')
+  }
+}, document.querySelector('#box1'));
+
+console.log('测试2：{ foo: true, bar: false }');
+renderer.render({
+  type: 'p',
+  props: {
+    class: normalizeClass({ foo: true, bar: false })
+  }
+}, document.querySelector('#box2'));
+
+console.log(`测试3：['foo bar', { baz: true, org: false }]`);
+renderer.render({
+  type: 'p',
+  props: {
+    class: normalizeClass(['foo bar', { baz: true, org: false }])
+  }
+}, document.querySelector('#box3'));

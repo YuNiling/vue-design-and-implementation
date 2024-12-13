@@ -1,9 +1,11 @@
+// ** 工具类
+
 /**
  * 判断是否应该作为 DOM Properties 设置
- * @param {*} el 
- * @param {*} key 
- * @param {*} value 
- * @returns 
+ * @param {Element} el 元素
+ * @param {string} key 属性名称
+ * @param {*} value 属性的值
+ * @returns {boolean} 是否能通过 DOM Properties 设置其属性
  */
 export function shouldSetAsProps(el, key, value) {
   // 特殊处理
@@ -13,22 +15,20 @@ export function shouldSetAsProps(el, key, value) {
 }
 
 /**
- * 将值序列化为字符串
- * @param {String/Array/Object} value 
- * @returns 
+ * 将不同类型的 class 值序列化为字符串
+ * @param {string/Array/object} value 不同类型的 class 值
+ * @returns {string} 序列化后的字符串
  */
 export function normalizeClass(value) {
-  if (typeof value === 'string') return value;
-
-  if (Array.isArray(value)) {
-    return value.map(normalizeClass).filter(Boolean).join(' ');
+  let res = '';
+  if (typeof value === 'string') {
+    res = value;
+  } else if (Array.isArray(value)) {
+    res = value.map(normalizeClass).join(' ');
+  } else if (Object.prototype.toString.call(value) === '[object Object]') {
+    res = Object.keys(value).filter((k) => value[k]).join(' ');
   }
-
-  if (typeof value === 'object') {
-    return Object.keys(value)
-      .filter(key => value[key])
-      .join(' ');
-  }
+  return res.trim();
 }
 
 /**

@@ -1,53 +1,7 @@
-// * （先实现这章节，再《事件冒泡与更新时机问题》这章节）更新子节点
-// * 子节点总共有三种情况：没有节点、文本节点、一组子节点。
-// * 新旧节点比较时，总共有9种可能情况：
-// * 1.如果 newVNode 不存在，oldVNode 有三种情况
-// ***** 如果 oldVNode 不存在，不管
-// ***** 如果 oldVNode 是文本节点，清空文本
-// ***** 如果 oldVNode 是一组子节点，逐个卸载
-// * 2.如果 newVNode 是文本节点，oldVNode 有三种情况
-// ***** 如果 oldVNode 不存在，不管
-// ***** 如果 oldVNode 是文本节点，新的文本内容覆盖
-// ***** 如果 oldVNode 是一组子节点，逐个卸载，新的文本内容覆盖
-// * 3.如果 newVNode 是一组子节点，oldVNode 有三种情况
-// ***** 如果 oldVNode 不存在，清空容器，逐个挂载
-// ***** 如果 oldVNode 是文本节点，清空文本，清空容器，逐个挂载
-// ***** 如果 oldVNode 是一组子节点，逐个卸载旧的子节点，逐个挂载新的子节点
+// ** Fragment
 
-/**
- * 判断是否应该作为 DOM Properties 设置
- * @param {*} el 
- * @param {*} key 
- * @param {*} value 
- * @returns 
- */
-function shouldSetAsProps(el, key, value) {
-  // 特殊处理
-  if (key === 'form' && el.tagName === 'INPUT') return false;
-  // 用 in 操作符判断 key 是否存在对应的 DOM Properties
-  return key in el;
-}
-
-/**
- * 将值序列化为字符串
- * @param {String/Array/Object} value 
- * @returns 
- */
-function normalizeClass(value) {
-  if (typeof value === 'string') return value;
-
-  if (Array.isArray(value)) {
-    let t = value.map(normalizeClass).filter(Boolean).join(' ');
-    console.log(t);
-    return t;
-  }
-
-  if (typeof value === 'object') {
-    return Object.keys(value)
-      .filter(key => value[key])
-      .join(' ');
-  }
-}
+import { shouldSetAsProps } from '../utils.js';
+import { Text, Comment, Fragment } from '../NODE_TYPE.js';
 
 // 创建渲染器
 function createRenderer(options) {
@@ -57,9 +11,11 @@ function createRenderer(options) {
     createElement,
     setElementText,
     insert,
-    patchProps
+    patchProps,
+    setText,
+    createText,
+    createComment
   } = options;
-
 
   /**
    * “打补丁”（或更新或挂载）
@@ -83,6 +39,41 @@ function createRenderer(options) {
         mountElement(n2, container);
       } else {
         patchElement(n1, n2);
+      }
+    } else if (type === Text) {
+      // n2 是文本节点
+      if (!n1) {
+        // 如果没有旧节点，直接进行挂载
+        const el = n2.el = createText(n2.children);
+        insert(el, container);
+      } else { 
+        // 如果旧节点存在，只需要使用新的文本节点的文本内容更新旧文本节点内容即可
+        const el = n2.el = n1.el;
+        if (n2.children !== n1.children) {
+          setText(el, n2.children);
+        }
+      }
+    } else if (type === Comment) {
+      // n2 是注释节点
+      if (!n1) {
+        // 如果没有旧节点，直接进行挂载
+        const el = n2.el = createComment(n2.children);
+        insert(el, container);
+      } else { 
+        // 如果旧节点存在，只需要使用新的文本节点的文本内容更新旧文本节点内容即可
+        const el = n2.el = n1.el;
+        if (n2.children !== n1.children) {
+          setText(el, n2.children);
+        }
+      }
+    } else if (type === Fragment) {
+      // n2 是 Fragment
+      if (!n1) {
+        // 如果旧 vnode 不存在，则只需要将 Fragment 的 children 逐个挂载即可
+        n2.children.forEach(c => patch(null, c, container))
+      } else {
+        // 如果旧 vnode 存在，则只需要更新 Fragment 的 children 即可
+        patchChildren(n1, n2, container)
       }
     } else if (typeof type === 'object') {
       // 如果 n2.type 的值的类型是对象，则它描述的是组件
@@ -210,6 +201,12 @@ function createRenderer(options) {
    * @param {*} vnode 虚拟节点
    */
   function unmount(vnode) {
+    // 在卸载时，如果卸载的 vnode 类型为 Fragment，则需要卸载其 children
+    if (vnode.type === Fragment) {
+      vnode.children.forEach(c => unmount(c));
+      return;
+    }
+    
     const parent = vnode.el.parentNode;
     if (parent) parent.removeChild(vnode.el);
   }
@@ -222,18 +219,23 @@ function createRenderer(options) {
 const renderer = createRenderer({
   // 用于创建元素
   createElement(tag) {
-    // console.log(`创建元素 ${tag}`);
     return document.createElement(tag);
   },
   // 用于设置元素的文本节点
   setElementText(el, text) {
-    // console.log(`设置 ${el.outerHTML} 的文本内容：${text}`);
     el.textContent = text;
+  },
+  createText(text) {
+    return document.createTextNode(text);
+  },
+  setText(el, text) {
+    el.nodeValue = text;
+  },
+  createComment(comment) {
+    return document.createComment(comment);
   },
   // 用于在给定的 parent 下添加指定元素
   insert(el, parent, anchor = null){
-    console.log(el.outerHTML);
-    // console.log(`将 ${el.outerHTML} 添加到 ${parent.outerHTML} 下`);
     parent.insertBefore(el, anchor);
   },
   // 将属性设置相关操作封装到 patchProps 函数中，并作为渲染器选项传递
@@ -248,6 +250,9 @@ const renderer = createRenderer({
           // 如果没有 invoker，则将一个伪造的 invoker 缓存到 el._vei 中
           // vei 是 vue event invoker 的首字母缩写
           invoker = el._vei[key] = (e) => {
+            // e.timeStamp 是事件触发时间
+            // 如果事件触发时间早于事件绑定时间，则不执行事件处理函数
+            if (e.timeStamp < invoker.attached) return;
             // 当伪造的事件处理函数执行时，会执行真正的事件处理函数
             if (Array.isArray(invoker.value)) {
               invoker.value.forEach(fn => fn(e));
@@ -257,6 +262,8 @@ const renderer = createRenderer({
           };
           // 将真正的事件处理函数赋值给 invoker.value
           invoker.value = nextValue;
+          // 添加 invoker.attached 属性，存储事件绑定时间
+          invoker.attached = performance.now();
           // 绑定 invoker 作为事件处理函数
           el.addEventListener(name, invoker);
         } else {
@@ -274,11 +281,7 @@ const renderer = createRenderer({
       if (type === 'boolean' && nextValue === '') {
         el[key] = true;
       } else {
-        if (!nextValue) {
-          el.removeAttribute(key);
-        } else {
-          el[key] = nextValue;
-        }
+        el[key] = nextValue;
       }
     } else {
       el.setAttribute(key, nextValue);
@@ -286,160 +289,21 @@ const renderer = createRenderer({
   }
 });
 
-// 测试1：更新 props 测试
-// const vnode1 = {
-//   type: 'p',
-//   props: {
-//     class: 'foo',
-//     id: 'test1'
-//   },
-//   children: 'text'
-// };
-// const vnode2 = {
-//   type: 'p',
-//   props: {
-//     class: 'bar'
-//   },
-//   children: 'text'
-// };
-// renderer.render(vnode1, document.querySelector('#app'));
-// setTimeout(() => {
-//   renderer.render(vnode2, document.querySelector('#app'));
-// }, 1000);
-
-// 测试2：更新 children 测试（oldVNode 是 null，newVNode 是文本节点）
-// const vnode1 = {
-//   type: 'div',
-//   children: null
-// };
-// const vnode2 = {
-//   type: 'div',
-//   children: 'new div text'
-// };
-// renderer.render(vnode1, document.querySelector('#app'));
-// setTimeout(() => {
-//   renderer.render(vnode2, document.querySelector('#app'));
-// }, 1000);
-
-// 测试3：更新 children 测试（oldVNode 是文本节点，newVNode 是文本节点）
-// const vnode1 = {
-//   type: 'div',
-//   children: 'div text'
-// };
-// const vnode2 = {
-//   type: 'div',
-//   children: 'new div text'
-// };
-// renderer.render(vnode1, document.querySelector('#app'));
-// setTimeout(() => {
-//   renderer.render(vnode2, document.querySelector('#app'));
-// }, 1000);
-
-// 测试4：更新 children 测试（oldVNode 是一组子节点，newVNode 是文本节点）
-// const vnode1 = {
-//   type: 'div',
-//   children: [
-//     {
-//       type: 'p',
-//       child: 'p text'
-//     }
-//   ]
-// };
-// const vnode2 = {
-//   type: 'div',
-//   children: 'new div text'
-// };
-// renderer.render(vnode1, document.querySelector('#app'));
-// setTimeout(() => {
-//   renderer.render(vnode2, document.querySelector('#app'));
-// }, 1000);
-
-// 测试5：更新 children 测试（oldVNode 是文本节点，newVNode 是 null）
-// const vnode1 = {
-//   type: 'div',
-//   children: 'div text'
-// };
-// const vnode2 = {
-//   type: 'div',
-//   children: null
-// };
-// renderer.render(vnode1, document.querySelector('#app'));
-// setTimeout(() => {
-//   renderer.render(vnode2, document.querySelector('#app'));
-// }, 1000);
-
-// 测试6：更新 children 测试（oldVNode 是文本节点，newVNode 是文本节点）
-// const vnode1 = {
-//   type: 'div',
-//   children: 'div text'
-// };
-// const vnode2 = {
-//   type: 'div',
-//   children: 'new div text'
-// };
-// renderer.render(vnode1, document.querySelector('#app'));
-// setTimeout(() => {
-//   renderer.render(vnode2, document.querySelector('#app'));
-// }, 1000);
-
-// 测试7：更新 children 测试（oldVNode 是文本节点，newVNode 是一组子节点）
-// const vnode1 = {
-//   type: 'div',
-//   children: 'div text'
-// };
-// const vnode2 = {
-//   type: 'div',
-//   children: [
-//     {
-//       type: 'h1',
-//       children: 'new h1 text'
-//     }
-//   ]
-// };
-// renderer.render(vnode1, document.querySelector('#app'));
-// setTimeout(() => {
-//   renderer.render(vnode2, document.querySelector('#app'));
-// }, 1000);
-
-// 测试8：更新 children 测试（oldVNode 是一组子节点，newVNode 是不存在）
-// const vnode1 = {
-//   type: 'div',
-//   children: [
-//     {
-//       type: 'p',
-//       children: 'p text'
-//     }
-//   ]
-// };
-// const vnode2 = {
-//   type: 'div',
-//   children: null
-// };
-// renderer.render(vnode1, document.querySelector('#app'));
-// setTimeout(() => {
-//   renderer.render(vnode2, document.querySelector('#app'));
-// }, 1000);
-
-// 测试9：更新 children 测试（oldVNode 是一组子节点，newVNode 是一组子节点）
-const vnode1 = {
-  type: 'div',
+// 测试：
+const vnode = {
+  type: 'ul',
   children: [
     {
-      type: 'p',
-      children: 'p text'
+      type: Fragment,
+      children: [
+        { type: 'li', children: '1' },
+        { type: 'li', children: '2' },
+        { type: 'li', children: '3' }
+      ]
     }
   ]
 };
-const vnode2 = {
-  type: 'div',
-  children: [
-    {
-      type: 'h1',
-      children: 'new h1 text'
-    }
-  ]
-};
-renderer.render(vnode1, document.querySelector('#app'));
+renderer.render(vnode, document.querySelector('#app'));
 setTimeout(() => {
-  renderer.render(vnode2, document.querySelector('#app'));
-}, 1000);
+  renderer.render(null, document.querySelector('#app'));
+}, 3000);

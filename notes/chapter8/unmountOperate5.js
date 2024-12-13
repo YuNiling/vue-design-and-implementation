@@ -1,3 +1,7 @@
+// ** 卸载操作
+
+import { shouldSetAsProps } from '../utils.js';
+
 // 创建渲染器
 function createRenderer(options) {
 
@@ -5,7 +9,8 @@ function createRenderer(options) {
   const {
     createElement,
     setElementText,
-    insert
+    insert,
+    patchProps
   } = options;
 
   /**
@@ -29,8 +34,8 @@ function createRenderer(options) {
    * @param {*} container 挂载点
    */
   function mountElement(vnode, container) {
-    // 创建 DOM 元素
-    const el = createElement(vnode.type);
+    // 创建 DOM 元素，让 vnode.el 引用真实 DOM 元素
+    const el = vnode.el = createElement(vnode.type);
 
     // 处理子节点，如果子节点是字符串，代表元素具有文本节点
     if (typeof vnode.children === 'string') {
@@ -46,8 +51,7 @@ function createRenderer(options) {
     if (vnode.props) {
       // 遍历 vnode.props
       for (const key in vnode.props) {
-        // 调用 setAttribute 将属性设置到元素上
-        el.setAttribute(key, vnode.props[key]);
+        patchProps(el, key, null, vnode.props[key]);
       }
     }
 
@@ -66,8 +70,7 @@ function createRenderer(options) {
     } else {
       if (container._vnode) {
         // 旧 vnode 存在，且新 vnode 不存在，说明是卸载（unmount）操作
-        // 只需要将 container 内的 DOM 清空即可
-        container.innerHTML = '';
+        unmount(container._vnode);
       }
     }
 
@@ -75,39 +78,57 @@ function createRenderer(options) {
     container._vnode = vnode;
   }
 
+  /**
+   * 卸载节点：将指定虚拟节点对应的真实 DOM 元素从父元素中移除
+   * @param {*} vnode 虚拟节点
+   */
+  function unmount(vnode) {
+    const parent = vnode.el.parentNode;
+    if (parent) parent.removeChild(vnode.el);
+  }
+
   return {
     render
   };
 }
 
-// 测试：响应数据值变更，会导致副作用函数重新执行，渲染函数重新调用
-const vnode = {
-  type: 'div',
-  props: {
-    id: 'foo'
-  },
-  children: [
-    {
-      type: 'p',
-      children: 'hello'
-    }
-  ]
-};
 const renderer = createRenderer({
   // 用于创建元素
   createElement(tag) {
-    console.log(`创建元素 ${tag}`);
     return document.createElement(tag);
   },
   // 用于设置元素的文本节点
   setElementText(el, text) {
-    console.log(`设置 ${el.outerHTML} 的文本内容：${text}`);
     el.textContent = text;
   },
   // 用于在给定的 parent 下添加指定元素
   insert(el, parent, anchor = null){
-    console.log(`将 ${el.outerHTML} 添加到 ${parent.outerHTML} 下`);
     parent.insertBefore(el, anchor);
+  },
+  // 将属性设置相关操作封装到 patchProps 函数中，并作为渲染器选项传递
+  patchProps(el, key, prevValue, nextValue) {
+    if (shouldSetAsProps(el, key, nextValue)) {
+      const type = typeof el[key];
+      // 对 class 进行特殊处理
+      if (key === 'class') {
+        el.className = nextValue || '';
+      } else if (type === 'boolean' && nextValue === '') {
+        el[key] = true;
+      } else {
+        el[key] = nextValue;
+      }
+    } else {
+      el.setAttribute(key, nextValue);
+    }
   }
 });
+
+console.log('测试：卸载 p 标签，3秒后卸载');
+const vnode = {
+  type: 'p',
+  children: 'text'
+};
 renderer.render(vnode, document.querySelector('#app'));
+setTimeout(() => {
+  renderer.render(null, document.querySelector('#app'));
+}, 3000);
