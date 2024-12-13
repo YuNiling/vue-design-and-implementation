@@ -1,46 +1,7 @@
-// * 添加新元素
-// * 1.想办法找到新增节点
-// * 2.将新增节点挂载到正确位置
+// ** 减少 DOM 操作的性能开销
 
-// 文本节点的 type 标识
-const Text = Symbol();
-// 注释节点的 type 标识
-const Comment = Symbol();
-// Fragment 节点的 type 标识
-const Fragment = Symbol();
-
-/**
- * 判断是否应该作为 DOM Properties 设置
- * @param {*} el 
- * @param {*} key 
- * @param {*} value 
- * @returns 
- */
-function shouldSetAsProps(el, key, value) {
-  // 特殊处理
-  if (key === 'form' && el.tagName === 'INPUT') return false;
-  // 用 in 操作符判断 key 是否存在对应的 DOM Properties
-  return key in el;
-}
-
-/**
- * 将值序列化为字符串
- * @param {String/Array/Object} value 
- * @returns 
- */
-function normalizeClass(value) {
-  if (typeof value === 'string') return value;
-
-  if (Array.isArray(value)) {
-    return value.map(normalizeClass).filter(Boolean).join(' ');
-  }
-
-  if (typeof value === 'object') {
-    return Object.keys(value)
-      .filter(key => value[key])
-      .join(' ');
-  }
-}
+import { shouldSetAsProps } from '../utils.js';
+import { Text, Comment, Fragment } from '../NODE_TYPE.js';
 
 // 创建渲染器
 function createRenderer(options) {
@@ -51,18 +12,18 @@ function createRenderer(options) {
     setElementText,
     insert,
     patchProps,
-    setText
+    setText,
+    createText,
+    createComment
   } = options;
-
 
   /**
    * “打补丁”（或更新或挂载）
    * @param {*} n1 旧 vnode
    * @param {*} n2 新 vnode
    * @param {*} container 容器
-   * @param {*} anchor 锚点元素
    */
-  function patch(n1, n2, container, anchor) {
+  function patch(n1, n2, container) {
     // 如果 n1 存在，则对比 n1 和 n2 的类型
     if (n1 && n1.type !== n2.type) {
       // 如果新旧 vnode 的类型不同，则直接将旧 vnode 卸载
@@ -75,7 +36,7 @@ function createRenderer(options) {
     // 如果 n2.type 的值是字符串类型，则描述的是普通标签元素
     if (typeof type === 'string') {
       if (!n1) {
-        mountElement(n2, container, anchor);
+        mountElement(n2, container);
       } else {
         patchElement(n1, n2);
       }
@@ -83,7 +44,7 @@ function createRenderer(options) {
       // n2 是文本节点
       if (!n1) {
         // 如果没有旧节点，直接进行挂载
-        const el = n2.el = document.createTextNode(n2.children);
+        const el = n2.el = createText(n2.children);
         insert(el, container);
       } else { 
         // 如果旧节点存在，只需要使用新的文本节点的文本内容更新旧文本节点内容即可
@@ -96,7 +57,7 @@ function createRenderer(options) {
       // n2 是注释节点
       if (!n1) {
         // 如果没有旧节点，直接进行挂载
-        const el = n2.el = document.createComment(n2.children);
+        const el = n2.el = createComment(n2.children);
         insert(el, container);
       } else { 
         // 如果旧节点存在，只需要使用新的文本节点的文本内容更新旧文本节点内容即可
@@ -151,94 +112,64 @@ function createRenderer(options) {
    * @param {*} n2 新 vnode
    * @param {*} container 当前正在被打补丁的 DOM 元素
    */
-    function patchChildren(n1, n2, container) {
-      // ** 新旧节点的类型有三种可能：没有子节点、文本节点以及一组子节点
-      if (typeof n2.children === 'string') {
-        // ** 新节点的类型是文本节点
-        if (Array.isArray(n1.children)) {
-          // 只有当旧节点为一组子节点时，才需要逐个卸载，其他情况下什么都不需要
-          n1.children.forEach((c) => unmount(c));
-        }
-        // 最后将新的文本节点内容设置给容器元素
-        setElementText(container, n2.children);
-      } else if (Array.isArray(n2.children)) {
-        // ** 新节点是一组子节点
+  function patchChildren(n1, n2, container) {
+    // ** 新旧节点的类型有三种可能：没有子节点、文本节点以及一组子节点
+    if (typeof n2.children === 'string') {
+      // ** 新节点的类型是文本节点
+      if (Array.isArray(n1.children)) {
+        // 只有当旧节点为一组子节点时，才需要逐个卸载，其他情况下什么都不需要
+        n1.children.forEach((c) => unmount(c));
+      }
+      // 最后将新的文本节点内容设置给容器元素
+      setElementText(container, n2.children);
+    } else if (Array.isArray(n2.children)) {
+      // ** 新节点是一组子节点
+      if (Array.isArray(n1.children)) {
+        // 新旧节点都是一组子节点
+        // 新旧 children
         const oldChildren = n1.children;
         const newChildren = n2.children;
-
-        // 用来存储寻找过程中遇到的最大索引值
-        let lastIndex = 0;
-        for (let i = 0; i < newChildren.length; i++) {
-          const newVNode = newChildren[i];
-          let j = 0;
-          // 在第一层循环中定义变量 find，代表是是否在旧的一组子节点中找到可复用的节点，
-          // 初始值为 false，代表没找到
-          let find = false;
-          for (j; j < oldChildren.length; j++) {
-            const oldVNode = oldChildren[j];
-            // 如果找到了具有相同 key 值的两个节点，说明可以复用，但仍然需要调用 patch 函数更新
-            if (newVNode.key === oldVNode.key) {
-              // 一旦找到可复用的节点，则将变量 find 的值设为 true
-              find = true;
-              patch(oldVNode, newVNode, container);
-              if (j < lastIndex) {
-                // 如果当前找到的节点在旧 children 中的索引小于最大索引值 lastINdex,
-                // 说明该节点对应的真实 DOM 需要移动
-                // 先获取 newVNode 的前一个 vnode，即 prevVNode
-                const prevVNode = newChildren[i - 1];
-                // 如果 prevVNode 不存在，则说明当前 newVNode 是第一个节点，它不需要移动
-                if (prevVNode) {
-                  // 由于我们要将 newVNode 对应的真实 DOM 移动到 prevVNode 所对应真实 DOM 后面，
-                  // 所以我们需要读取 prevVNode 所对应真实 DOM 的下一个兄弟节点，将其作为锚点
-                  const anchor = prevVNode.el.nextSibling;
-                  // 调用 insert 方法将 newVNode 对应的真实 DOM 插入到锚点前面，
-                  // 也就是 prevVNode 对应真实 DOM 的后面
-                  insert(newVNode.el, container, anchor);
-                }
-              } else {
-                // 如果当前找到的节点在旧 children 中的索引不小于最大索引值
-                // 则更新 lastIndex 的值
-                lastIndex = j;
-              }
-              break;
-            }
+        const oldLen = oldChildren.length;
+        const newLen = newChildren.length;
+        // 两组子节点的公共长度，即两者中较短的那一组子节点的长度
+        const commonLength = Math.min(oldLen, newLen);
+        // 遍历 commonLength 次
+        for (let i = 0; i < commonLength; i++) {
+          patch(oldChildren[i], newChildren[i], container);
+        }
+        if (newLen > oldLen) {
+          // 有新子节点需要挂载
+          for (let i = commonLength; i < newLen; i++) {
+            patch(null, newChildren[i], container);
           }
-
-          // 如果此时 find 为 false，说明当前 newVNode 没有在旧的一组子节点中找到可复用的节点，即 newVNode 是新增节点，需要挂载
-          if (!find) {
-            // 为了将节点挂载到正确位置，我们需要先获取锚点元素
-            // 首先获取当前 newVNode 的前一个 vnode 节点
-            const prevVNode = newChildren[i - 1];
-            let anchor = null;
-            if (prevVNode) {
-              // 如果有前一个 vnode 节点，则使用它的下一个兄弟节点作为锚点元素
-              anchor = prevVNode.el.nextSibling;
-            } else {
-              // 如果没有前一个 vnode 节点，说明即将挂载的新节点是第一个子节点
-              // 这时我们使用容器元素的 firstChild 作为锚点
-              anchor = container.firstChild;
-            }
-            // 挂载 newVNode
-            patch(null, newVNode, container, anchor);
+        } else if (oldLen > newLen) {
+          // 旧子节点需要卸载
+          for (let i = commonLength; i < oldLen; i++) {
+            unmount(oldChildren[i]);
           }
         }
       } else {
-        // ** 新节点是不存在
-        if (Array.isArray(n1.children)) {
-          n1.children.forEach(c => unmount(c));
-        } else if (typeof n1.children === 'string') {
-          setElementText(container, '');
-        }
+        // 旧子节点要么是文本节点，要么不存在
+        // 但无论哪种情况，我们都只需要将容器清空，然后将新的一组子节点逐个挂载
+        setElementText(container, '');
+        n2.children.forEach(c => patch(null, c, container));
+      }
+    } else {
+      // ** 新节点是不存在
+      if (Array.isArray(n1.children)) {
+        n1.children.forEach(c => unmount(c));
+      } else if (typeof n1.children === 'string') {
+        setElementText(container, '');
       }
     }
+  }
 
   /**
    * 挂载元素
    * @param {*} vnode 虚拟节点
    * @param {*} container 挂载点
-   * @param {*} anchor 锚点元素
    */
-  function mountElement(vnode, container, anchor) {
+  function mountElement(vnode, container) {
     // 创建 DOM 元素，让 vnode.el 引用真实 DOM 元素
     const el = vnode.el = createElement(vnode.type);
 
@@ -260,7 +191,7 @@ function createRenderer(options) {
       }
     }
 
-    insert(el, container, anchor);
+    insert(el, container);
   }
 
   /**
@@ -306,21 +237,23 @@ function createRenderer(options) {
 const renderer = createRenderer({
   // 用于创建元素
   createElement(tag) {
-    // console.log(`创建元素 ${tag}`);
     return document.createElement(tag);
   },
   // 用于设置元素的文本节点
   setElementText(el, text) {
-    // console.log(`设置 ${el.outerHTML} 的文本内容：${text}`);
     el.textContent = text;
+  },
+  createText(text) {
+    return document.createTextNode(text);
   },
   setText(el, text) {
     el.nodeValue = text;
   },
+  createComment(comment) {
+    return document.createComment(comment);
+  },
   // 用于在给定的 parent 下添加指定元素
   insert(el, parent, anchor = null){
-    // console.log(el.outerHTML);
-    // console.log(`将 ${el.outerHTML} 添加到 ${parent.outerHTML} 下，在 ${anchor} 之前`);
     parent.insertBefore(el, anchor);
   },
   // 将属性设置相关操作封装到 patchProps 函数中，并作为渲染器选项传递
@@ -374,25 +307,76 @@ const renderer = createRenderer({
   }
 });
 
-// 测试：新旧节点类型一样，key 不一样，内容相同，可以复用，需要移动节点并且打上补丁
-const vnode1 = {
+for (let i = 1; i <= 3; i++) {
+  let box = document.createElement('box');
+  box.id = `box${i}`
+  document.querySelector('#app').appendChild(box);
+}
+
+console.log('测试1：测试新旧节点类型一样，内容不一样，数量相同')
+const vnode11 = {
   type: 'div',
   children: [
-    { type: 'p', children: '1', key: 1 },
-    { type: 'p', children: '2', key: 2 },
-    { type: 'p', children: '3', key: 3  }
+    { type: 'p', children: '1-1' },
+    { type: 'p', children: '1-2' },
+    { type: 'p', children: '1-3' }
   ]
 };
-const vnode2 = {
+const vnode12 = {
   type: 'div',
   children: [
-    { type: 'p', children: '3', key: 3 },
-    { type: 'p', children: '1', key: 1 },
-    { type: 'p', children: '4', key: 4 },
-    { type: 'p', children: '2', key: 2 }
+    { type: 'p', children: '1-4' },
+    { type: 'p', children: '1-5' },
+    { type: 'p', children: '1-6' }
   ]
 };
-renderer.render(vnode1, document.querySelector('#app'));
+renderer.render(vnode11, document.querySelector('#box1'));
 setTimeout(() => {
-  renderer.render(vnode2, document.querySelector('#app'));
+  renderer.render(vnode12, document.querySelector('#box1'));
+}, 1000);
+
+console.log('测试2：测试新旧节点类型一样，内容不一样，数量不同（旧的多），旧的多出的要卸载');
+const vnode21 = {
+  type: 'div',
+  children: [
+    { type: 'p', children: '2-1' },
+    { type: 'p', children: '2-2' },
+    { type: 'p', children: '2-3' },
+    { type: 'p', children: '2-9' }
+  ]
+};
+const vnode22 = {
+  type: 'div',
+  children: [
+    { type: 'p', children: '2-4' },
+    { type: 'p', children: '2-5' },
+    { type: 'p', children: '2-6' }
+  ]
+};
+renderer.render(vnode21, document.querySelector('#box2'));
+setTimeout(() => {
+  renderer.render(vnode22, document.querySelector('#box2'));
+}, 1000);
+
+console.log('测试3：测试新旧节点类型一样，内容不一样，数量不同（新的多），新的多出的要挂载');
+const vnode31 = {
+  type: 'div',
+  children: [
+    { type: 'p', children: '3-1' },
+    { type: 'p', children: '3-2' },
+    { type: 'p', children: '3-3' }
+  ]
+};
+const vnode32 = {
+  type: 'div',
+  children: [
+    { type: 'p', children: '3-4' },
+    { type: 'p', children: '3-5' },
+    { type: 'p', children: '3-6' },
+    { type: 'p', children: '3-9' }
+  ]
+};
+renderer.render(vnode31, document.querySelector('#box3'));
+setTimeout(() => {
+  renderer.render(vnode32, document.querySelector('#box3'));
 }, 1000);
