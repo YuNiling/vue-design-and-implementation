@@ -275,8 +275,8 @@ const renderer = createRenderer({
 });
 
 for (let i = 1; i <= 3; i++) {
-  let box = document.createElement('box');
-  box.id = `box${i}`
+  let box = document.createElement('div');
+  box.id = `box${i}`;
   document.querySelector('#app').appendChild(box);
 }
 
