@@ -6,7 +6,12 @@
  * @param {*} n2 新 vnode
  * @param {*} container 当前正在被打补丁的 DOM 元素
  */
-export function patchSimpleChildren(n1, n2, container) {
+export function patchSimpleChildren(n1, n2, container, options = {}) {
+  const {
+    patch,
+    insert
+  } = options;
+
   const oldChildren = n1.children;
   const newChildren = n2.children;
 
@@ -14,11 +19,10 @@ export function patchSimpleChildren(n1, n2, container) {
   let lastIndex = 0;
   for (let i = 0; i < newChildren.length; i++) {
     const newVNode = newChildren[i];
-    let j = 0;
     // 在第一层循环中定义变量 find，代表是是否在旧的一组子节点中找到可复用的节点，
     // 初始值为 false，代表没找到
     let find = false;
-    for (j; j < oldChildren.length; j++) {
+    for (let j = 0; j < oldChildren.length; j++) {
       const oldVNode = oldChildren[j];
       // 如果找到了具有相同 key 值的两个节点，说明可以复用，但仍然需要调用 patch 函数更新
       if (newVNode.key === oldVNode.key) {
@@ -37,6 +41,7 @@ export function patchSimpleChildren(n1, n2, container) {
             const anchor = prevVNode.el.nextSibling;
             // 调用 insert 方法将 newVNode 对应的真实 DOM 插入到锚点前面，
             // 也就是 prevVNode 对应真实 DOM 的后面
+            console.log(`新节点 ${newVNode.children} 移动到节点 ${prevVNode.children} 之后`);
             insert(newVNode.el, container, anchor);
           }
         } else {
@@ -56,8 +61,10 @@ export function patchSimpleChildren(n1, n2, container) {
       let anchor = null;
       if (prevVNode) {
         // 如果有前一个 vnode 节点，则使用它的下一个兄弟节点作为锚点元素
+        console.log(`新节点 ${newVNode.children} 挂载到节点 ${prevVNode.children} 只后`);
         anchor = prevVNode.el.nextSibling;
       } else {
+        console.log(`新节点 ${newVNode.children} 挂载到 container 容器第一个子节点位置`);
         // 如果没有前一个 vnode 节点，说明即将挂载的新节点是第一个子节点
         // 这时我们使用容器元素的 firstChild 作为锚点
         anchor = container.firstChild;
@@ -65,19 +72,20 @@ export function patchSimpleChildren(n1, n2, container) {
       // 挂载 newVNode
       patch(null, newVNode, container, anchor);
     }
+  }
 
-    // 遍历旧的一组子节点
-    for (let i = 0; i < oldChildren.length; i++) {
-      const oldVNode = oldChildren[i];
-      // 拿旧节点 oldVNode 去新的一组子节点中寻找具有相同 key 值的节点
-      const has = newChildren.find(
-        vnode => vnode.key === oldVNode.key
-      );
-      if (!has) {
-        // 如果没有找到具有相同 key 值的节点，则说明需要删除该节点
-        // 调用 unmount 函数将其卸载
-        unmount(oldVNode);
-      }
+  // 遍历旧的一组子节点，删除废弃的旧节点
+  for (let i = 0; i < oldChildren.length; i++) {
+    const oldVNode = oldChildren[i];
+    // 拿旧节点 oldVNode 去新的一组子节点中寻找具有相同 key 值的节点
+    const has = newChildren.find(
+      vnode => vnode.key === oldVNode.key
+    );
+    if (!has) {
+      // 如果没有找到具有相同 key 值的节点，则说明需要删除该节点
+      // 调用 unmount 函数将其卸载
+      console.log(`卸载旧节点 ${oldVNode.children}`);
+      unmount(oldVNode);
     }
   }
 }
@@ -88,7 +96,13 @@ export function patchSimpleChildren(n1, n2, container) {
  * @param {*} n2 新 vnode
  * @param {*} container 当前正在被打补丁的 DOM 元素
  */
-export function patchKeyedChildren(n1, n2, container) {
+export function patchKeyedChildren(n1, n2, container, options = {}) {
+  const {
+    patch,
+    insert,
+    unmount
+  } = options;
+
   const oldChildren = n1.children;
   const newChildren = n2.children;
   // 四个索引值
@@ -105,18 +119,25 @@ export function patchKeyedChildren(n1, n2, container) {
   while(oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx) {
     // 增加两个判断分支，如果旧头部节点为 undefined，则说明该节点已经被处理过了，直接跳下一个位置
     if (!oldStartVNode) {
+      console.log(`旧头为 undefined`);
       oldStartVNode = oldChildren[++oldStartIdx];
+    } else if (!oldEndVNode) {
+      console.log(`旧尾为 undefined`);
+      oldEndVNode = oldChildren[--oldEndIdx];
     } else if (oldStartVNode.key === newStartVNode.key) {
+      console.log(`旧头（${oldStartVNode.children}）=== 新头（${newStartVNode.children}），打补丁`);
       // 由于两者都处于头部，不需要对真实 DOM 进行移动，只需要打补丁即可
       patch(oldStartVNode, newStartVNode, container);
       oldStartVNode = oldChildren[++oldStartIdx];
       newStartVNode = newChildren[++newStartIdx];
     } else if (oldEndVNode.key === newEndVNode.key) {
+      console.log(`旧尾（${oldEndVNode.children}）=== 新尾（${newEndVNode.children}），打补丁`);
       // 由于两者都处于尾部，不需要对真实 DOM 进行移动，只需要打补丁即可
       patch(oldEndVNode, newEndVNode, container);
       oldEndVNode = oldChildren[--oldEndIdx];
       newEndVNode = newChildren[--newEndIdx];
     } else if (oldStartVNode.key === newEndVNode.key) {
+      console.log(`旧头（${oldStartVNode.children}）=== 新尾（${newEndVNode.children}），打补丁，旧头(${oldStartVNode.children}）移动到旧尾(${oldEndVNode.children}）后面`);
       // 从原本的头部节点变成尾部节点，需要将真实 DOM 移动到 oldEndVNode 后面
       patch(oldStartVNode, newEndVNode, container);
       // 移动 DOM 操作：oldStartVNode.el 移动到 oldEndVNode.el 节点的后面
@@ -124,6 +145,7 @@ export function patchKeyedChildren(n1, n2, container) {
       oldStartVNode = oldChildren[++oldStartIdx];
       newEndVNode = newChildren[--newEndIdx];
     } else if (oldEndVNode.key === newStartVNode.key) {
+      console.log(`旧尾（${oldEndVNode.children}）=== 新头（${newStartVNode.children}），打补丁，旧尾(${oldEndVNode.children}）移动到旧头(${oldStartVNode.children}）前面`);
       // 仍然需要调用 patch 函数进行打补丁
       patch(oldEndVNode, newStartVNode, container);
       // 移动 DOM 操作：oldEndVNode.el 移动到 oldStartVNode.el 前面
@@ -141,6 +163,7 @@ export function patchKeyedChildren(n1, n2, container) {
       if (idxInOld > 0) {
         // idxInOld 位置对应的 vnode 就是需要移动的节点
         const vnodeToMove = oldChildren[idxInOld];
+        console.log(`非理想情况，打补丁，vnodeToMove(${vnodeToMove.children}）挂载到旧头(${oldStartVNode.children}）前面`);
         // 不要忘记除移动操作外还应该打补丁
         patch(vnodeToMove, newStartVNode, container);
         // 将 vnodeToMove.el 移动到头部节点 oldStartVNode.el 之前，因此使用后者作为锚点
@@ -148,6 +171,7 @@ export function patchKeyedChildren(n1, n2, container) {
         // 由于位置 idxInOld 处的节点所对应的真实 DOM 已经移动到了别处，因此将其设置为 undefined
         oldChildren[idxInOld] = undefined;
       } else {
+        console.log(`挂载新节点 ${newStartVNode.children}`);
         // 将 newStartVNode 作为新节点挂载到头部，使用当前头部节点 oldStartVNode.el 作为锚点
         patch(null, newStartVNode, container, oldStartVNode.el);
       }
@@ -157,14 +181,16 @@ export function patchKeyedChildren(n1, n2, container) {
   }
 
   // 循环结束后检查索引值的情况
-  if (oldEndIdx < oldStartIdx && newEndIdx <= newStartIdx) {
+  if (oldStartIdx > oldEndIdx && newStartIdx <= newEndIdx) {
     // 如果满足条件，则说明有新的节点遗留，需要挂载它们
     for (let i = newStartIdx; i <= newEndIdx; i++) {
+      console.log(`挂载新节点 ${newChildren[i].children}`);
       patch(null, newChildren[i], container, oldStartVNode.el);
     }
-  } else if (newEndIdx < newStartIdx && oldStartIdx <= oldEndIdx) {
+  } else if (oldStartIdx <= oldEndIdx && newStartIdx > newEndIdx) {
     // 移除操作
     for (let i = oldStartIdx; i <= oldEndIdx; i++) {
+      console.log(`卸载旧节点 ${oldChildren[i].children}`);
       unmount(oldChildren[i]);
     }
   }
