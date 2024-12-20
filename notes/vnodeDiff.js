@@ -1,5 +1,7 @@
 // ** vnode 的 Diff 算法
 
+import { lis } from './utils.js';
+
 /**
  * 简单 Diff 算法
  * @param {*} n1 旧 vnode
@@ -7,10 +9,7 @@
  * @param {*} container 当前正在被打补丁的 DOM 元素
  */
 export function patchSimpleChildren(n1, n2, container, options = {}) {
-  const {
-    patch,
-    insert
-  } = options;
+  const { patch, insert, unmount } = options;
 
   const oldChildren = n1.children;
   const newChildren = n2.children;
@@ -97,11 +96,7 @@ export function patchSimpleChildren(n1, n2, container, options = {}) {
  * @param {*} container 当前正在被打补丁的 DOM 元素
  */
 export function patchKeyedChildren(n1, n2, container, options = {}) {
-  const {
-    patch,
-    insert,
-    unmount
-  } = options;
+  const { patch, insert, unmount } = options;
 
   const oldChildren = n1.children;
   const newChildren = n2.children;
@@ -202,7 +197,9 @@ export function patchKeyedChildren(n1, n2, container, options = {}) {
  * @param {*} n2 新 vnode
  * @param {*} container 当前正在被打补丁的 DOM 元素
  */
-export function quickPatchKeyedChildren(n1, n2, container) {
+export function quickPatchKeyedChildren(n1, n2, container, options = {}) {
+  const { patch, unmount, insert } = options;
+
   const oldChildren = n1.children;
   const newChildren = n2.children;
   // 处理相同的前置节点
@@ -210,9 +207,9 @@ export function quickPatchKeyedChildren(n1, n2, container) {
   let j = 0;
   let oldVNode = oldChildren[j];
   let newVNode = newChildren[j];
-
   // while 循环向后遍历，直到遇到拥有不同 key 值的节点为止
-  while (oldVNode && newVNode && oldVNode.key === newVNode.key) {
+  while (oldVNode.key === newVNode.key) {
+    console.log(`前置节点 ${newVNode.children} 打补丁`);
     // 调用 patch 函数进行更新
     patch(oldVNode, newVNode, container);
     // 更新索引 j，让其递增
@@ -231,7 +228,8 @@ export function quickPatchKeyedChildren(n1, n2, container) {
   newVNode = newChildren[newEnd];
 
   // while 循环从后向前遍历，直到遇到拥有不同 key 值的节点为止
-  while (oldVNode && newVNode && oldVNode.key === newVNode.key) {
+  while (oldVNode.key === newVNode.key) {
+    console.log(`后置节点 ${newVNode.children} 打补丁`);
     // 调用 patch 函数进行更新
     patch(oldVNode, newVNode, container);
     // 递减 oldEnd 和 newEnd
@@ -251,11 +249,13 @@ export function quickPatchKeyedChildren(n1, n2, container) {
     // 采用 while 循环，调用 patch 函数逐个挂载新增节点
     while (j <= newEnd) {
       patch(null, newChildren[j++], container, anchor);
+      console.log(`挂载节点 ${newChildren[j].children}`);
     }
   } else if (newEnd < j && j <= oldEnd) {
     // ** j --> newEnd 之间的节点应该被卸载
     while (j <= oldEnd) {
       unmount(oldChildren[j++]);
+      console.log(`卸载节点 ${oldChildren[j].children}`);
     }
   } else {
     // ** 处理非理想情况
@@ -297,16 +297,19 @@ export function quickPatchKeyedChildren(n1, n2, container) {
           source[k - newStart] = i;
           // 判断节点是否移动
           if (k < pos) {
+            console.log(`节点 ${newVNode.children} 可以移动`);
             moved = true;
           } else {
             pos = k;
           }
         } else {
           // 没找到
+          console.log(`卸载节点 ${oldVNode.children}`);
           unmount(oldVNode);
         }
       } else {
         // 如果更新过的节点数量大于需要更新的节点，则卸载多余的节点
+        console.log(`卸载节点 ${oldVNode.children}`);
         unmount(oldVNode);
       }
     }
@@ -332,6 +335,7 @@ export function quickPatchKeyedChildren(n1, n2, container) {
           const anchor = nextPos < newChildren.length ? newChildren[nextPos].el : null;
           // 挂载
           patch(null, newVNode, container, anchor);
+          console.log(`挂载节点 ${newVNode.children} 在 ${newChildren[nextPos].children} 前面`);
         } else if (i !== seq[s]) {
           // ** 节点需要移动
           // 该节点在新 children 中的真实位置索引
@@ -343,6 +347,7 @@ export function quickPatchKeyedChildren(n1, n2, container) {
           const anchor = nextPos < newChildren.length ? newChildren[nextPos].el : null;
           // 移动
           insert(newVNode.el, container, anchor);
+          console.log(`移动节点 ${newVNode.children} 在 ${newChildren[nextPos].children} 前面`);
         } else {
           // ** 节点不需要移动，只需要让 s 指向下一个位置
           s--;
